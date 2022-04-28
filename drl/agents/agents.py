@@ -98,7 +98,7 @@ class DQAgent:
         q = np.array(self.q_eval(
             torch.as_tensor(observation[np.newaxis, :],
                             dtype=torch.float32, device=self.device)
-        ).detach())[0]
+        ).cpu().detach())[0]
         action = self.behaviour_policy.action(q)
         return action
 
@@ -206,7 +206,7 @@ class DQAgent:
         loss = delta**2
         self.memory.update_last_priorities(
             # (torch.abs(delta) + 1e-2).clip(0.1, 50.).detach().numpy()
-            (torch.argsort(delta.abs()) + 1).detach().numpy()
+            (torch.argsort(delta.abs()) + 1).cpu().detach().numpy()
         )
         loss = torch.mean(loss * sample_weights) / 4
 
@@ -356,7 +356,7 @@ class ExpectedAgent():
             q = np.array(self.q_eval(
                 torch.as_tensor(observation[np.newaxis, :],
                                 dtype=torch.float32, device=self.device)
-            ).detach())[0]
+            ).cpu().detach())[0]
         action = self.behaviour_policy.action(q)
         return action
 
@@ -458,7 +458,7 @@ class ExpectedAgent():
                 q_evals[:, 0].detach().numpy()))
             # print('behaviour dist ', self.behaviour_policy.distribution(q_evals[:, 0].detach().numpy()))
             # print('boltzmann dist ', BoltzmannPolicy(1).distribution(q_evals[:, 0]))
-            print(f'{actions[:, 0].item()=}   {rewards[:, 0].item()=:.3f}')
+            print(f'actions={actions[:, 0].item()}   rewards={rewards[:, 0].item():.3f}')
             print('q_target', q_target)
         # if not debug:
         _ = self._train_on_batch(x=states[:, 0], y=q_target, debug=debug)
@@ -519,7 +519,7 @@ class ExpectedAgent():
         # print('\n')
 
         if debug:
-            print(f'{loss=}')
+            print(f'loss={loss}')
 
         # optional gradient clipping
         # torch.nn.utils.clip_grad_norm_(self.q_eval.parameters(), 35.)

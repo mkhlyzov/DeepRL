@@ -73,18 +73,23 @@ class NoisyLinear(torch.nn.Linear):
 
     def reset_noise(self):
         if self.use_factorised:
-            epsilon_in = torch.randn(self.in_features)
+            epsilon_in = torch.randn(
+                self.in_features, device=self.weight.device)
             epsilon_in = epsilon_in.sign().mul(epsilon_in.abs().sqrt())
-            epsilon_out = torch.randn(self.out_features)
+            epsilon_out = torch.randn(
+                self.out_features, device=self.weight.device)
             epsilon_out = epsilon_out.sign().mul(epsilon_out.abs().sqrt())
             # outer product
             self.epsilon_weight = epsilon_out.ger(epsilon_in)
             self.epsilon_bias = epsilon_out
         else:
             self.epsilon_weight = torch.randn(
-                self.out_features, self.in_features)
-            self.epsilon_bias = torch.randn(self.out_features)
+                self.out_features, self.in_features, device=self.weight.device)
+            self.epsilon_bias = torch.randn(
+                self.out_features, device=self.weight.device)
 
     def remove_noise(self):
-        self.epsilon_weight = torch.zeros(self.out_features, self.in_features)
-        self.epsilon_bias = torch.zeros(self.out_features)
+        self.epsilon_weight = torch.zeros(
+            self.out_features, self.in_features, device=self.weight.device)
+        self.epsilon_bias = torch.zeros(
+            self.out_features, device=self.weight.device)

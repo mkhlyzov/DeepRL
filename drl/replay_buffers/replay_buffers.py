@@ -108,7 +108,7 @@ class NstepReplayBuffer(Buffer):
             self.rewards_memory = torch.zeros(
                 (self.mem_size, hist_len), dtype=torch.float32)
         else:
-            raise ValueError(f'Incorrect argument value {mod=}')
+            raise ValueError(f'Incorrect argument value mod={mod}')
 
     def __getitem__(self, idx):
         if isinstance(idx, int):

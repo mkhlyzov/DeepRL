@@ -91,8 +91,8 @@ for i in range(len(scores), n_games * 50):
             plt.show()
     except:
         pass
-    print(f'episode {i}  {score=:.1f}  {avg_score=:.1f}  ' +\
-          f'frames={len(done_hist)}  {avg_time=:.1f}  ' +\
+    print(f'episode {i}  score={score:.1f}  avg_Score={avg_score:.1f}  ' + \
+          f'frames={len(done_hist)}  avg_time={avg_time:.1f}  ' +\
           f'grads={agent.grad_magnitude:.1f}  ')# +\
           # f'dot={agent.features_alignment.item():.1f})'
     
