@@ -79,7 +79,7 @@ class DQAgent:
         self.loss = torch.nn.MSELoss()
         self.optimizer = torch.optim.RAdam(self.q_eval.parameters(), lr=lr)
 
-        self.grad_magnitude = 0
+        self.optimization_steps = 0
 
     def _reset_noise(self):
         # Resamples noise when working with NoisyDense networks
@@ -156,17 +156,13 @@ class DQAgent:
         if len(self.memory) < self.min_history:
             return
 
-        self._learn(debug=debug)
-
+        debug_info = self._learn(debug=debug)
         self._update_network_parameters()
-        # self.replace_target_counter += 1
-        # if self.replace_target_counter % self.replace_target == 0:
-        #     self._update_network_parameters()
-        #     self.replace_target_counter = 0
+        return debug_info
 
     def _learn(self, debug=False):
         states, actions, rewards, sample_weights = \
-            self.memory.sample(self.batch_size, beta=1.)
+            self.memory.sample(self.batch_size)
 
         states = torch.as_tensor(
             states, dtype=torch.float32, device=self.device)
@@ -218,11 +214,14 @@ class DQAgent:
         loss.backward()
         self.optimizer.step()
 
+        debug_info = {}
+        self.optimization_steps += 1
         grad_norm = 0
         for p in self.q_eval.parameters():
             grad_norm += p.grad.detach().data.norm(2).item()**2
-        self.grad_magnitude = self.grad_magnitude * 0.95 + \
-            0.05 * grad_norm**0.5
+        debug_info['grad_norm'] = grad_norm**0.5
+        debug_info['loss'] = loss.item()
+
         #########################################################
         # q_current = self.q_eval(state)
         # q_next = self.q_eval(next_state)
@@ -244,12 +243,6 @@ class DQAgent:
         # torch.nn.utils.clip_grad_norm_(self.q_eval.parameters(), 35.)
         # self.optimizer.step()
 
-        # grad_norm = 0
-        # for p in self.q_eval.parameters():
-        #     grad_norm += p.grad.detach().data.norm(2).item()**2
-        # self.grad_magnitude = self.grad_magnitude * 0.95 + \
-        #     0.05 * grad_norm**0.5
-
         # q_current = self.q_target(state)
         # v_current = self.q_eval.value(state)
         # delta = q_current[batch_index, action] - v_current
@@ -260,6 +253,8 @@ class DQAgent:
         # self.optimizer.zero_grad()
         # V_loss.backward()
         # self.optimizer.step()
+
+        return debug_info
 
     def save_model(self, fname=None):
         if fname is None:
@@ -325,7 +320,7 @@ class ExpectedAgent():
         self.optimizer = torch.optim.RAdam(self.q_eval.parameters(), lr=lr)
         # self.optimizer = torch.optim.SGD(self.q_eval.parameters(), lr=lr)
 
-        # debug info
+        # DEBUG INFO
         self.optimization_steps = 0
         self.avg_loss = 0
         self.grad_magnitude = 0

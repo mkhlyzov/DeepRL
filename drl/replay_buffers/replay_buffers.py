@@ -183,7 +183,7 @@ class Prioritized(object):
         assert len(self) >= batch_size
         if beta is None:
             beta = self.alpha * 0.67
-        assert beta > 0
+        assert beta >= 0
 
         idx = self._sample_index(batch_size)
         data = self.mem_buffer[idx]
