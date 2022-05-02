@@ -8,7 +8,10 @@ from drl.estimators.nn import (
 
 
 class DuelingDeepQNetwork(torch.nn.Module):
-    def __init__(self, input_dims, n_actions, neurons, noisy=True):
+    def __init__(
+            self, input_dims, n_actions, neurons,
+            noisy=True, factorised=False, parametrize=False
+    ):
         super(DuelingDeepQNetwork, self).__init__()
         self.input_dims = input_dims
         self.n_actions = n_actions
@@ -20,15 +23,22 @@ class DuelingDeepQNetwork(torch.nn.Module):
                 # torch.nn.utils.parametrizations.orthogonal(layer)
                 # torch.nn.utils.weight_norm(layer)
                 # torch.nn.Linear(self.neurons[i], self.neurons[i + 1])
-                NoisyLinear(self.neurons[i], self.neurons[i + 1])
+                NoisyLinear(
+                    self.neurons[i], self.neurons[i + 1],
+                    use_factorised=factorised
+                )
             )
             self.register_module(f'dense{i}', self.dense_layers[i])
 
         # self.V = torch.nn.Linear(self.neurons[-1], 1)
         # self.A = torch.nn.Linear(self.neurons[-1], self.n_actions)
-        self.V = NoisyLinear(self.neurons[-1], 1)
-        self.A = NoisyLinear(self.neurons[-1], self.n_actions)
-        # self._parametrize()
+        self.V = NoisyLinear(
+            self.neurons[-1], 1, use_factorised=factorised)
+        self.A = NoisyLinear(
+            self.neurons[-1], self.n_actions, use_factorised=factorised)
+
+        if parametrize:
+            self._parametrize()
 
     def forward(self, x):
         x = self.features(x)
@@ -81,3 +91,8 @@ class DuelingDeepQNetwork(torch.nn.Module):
         #         self.dense_layers[i])
         #     self.dense_layers[i] = torch.nn.utils.weight_norm(
         #         self.dense_layers[i])
+
+    def factorised_noise(self, use_factorised=True):
+        for name, child in self.named_children():
+            if isinstance(child, NoisyLinear):
+                child.use_factorised = use_factorised

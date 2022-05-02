@@ -28,8 +28,9 @@ import drl.utils as utils
 env = gym.make('LunarLander-v2')
 
 agent = agents.DQAgent(
-    input_dims=(8,), n_actions=4, gamma=0.99, n_steps=1,
-    epsilon=0., lr=5e-4,
+    input_dims=env.observation_space.shape,
+    n_actions=env.action_space.n,
+    gamma=0.99, n_steps=1, epsilon=0., lr=5e-4,
     batch_size=64, mem_size=500_000, min_history=1_000, replace_target=100
 )
 trainer = experiments.Trainer(
@@ -47,8 +48,8 @@ trainer.train(
 """
 100k eval steps with noise reset: ~90s -> 120s???
 100k eval steps w/o  noise reset: ~75s -> 103s???
-100k train steps w/o prioritized 1spa: 120s
-100k train steps w   prioritized 1spa: 175s
+100k train steps w/o prioritized 1spa: 90->120s (if parameterized)
+100k train steps w   prioritized 1spa: ->175s
 """
 
 
