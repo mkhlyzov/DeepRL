@@ -86,11 +86,11 @@ class DuelingDeepQNetwork(torch.nn.Module):
                     child, 'sigma_weight', NonNegative())
                 torch.nn.utils.parametrize.register_parametrization(
                     child, 'sigma_bias', NonNegative())
-        # for i in range(len(self.dense_layers)):
-        #     self.dense_layers[i] = torch.nn.utils.parametrizations.orthogonal(
-        #         self.dense_layers[i])
-        #     self.dense_layers[i] = torch.nn.utils.weight_norm(
-        #         self.dense_layers[i])
+        for i in range(len(self.dense_layers)):
+            self.dense_layers[i] = torch.nn.utils.parametrizations.orthogonal(
+                self.dense_layers[i])
+            # self.dense_layers[i] = torch.nn.utils.weight_norm(
+            #     self.dense_layers[i])
 
     def factorised_noise(self, use_factorised=True):
         for name, child in self.named_children():

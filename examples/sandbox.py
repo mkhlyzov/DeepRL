@@ -38,7 +38,7 @@ trainer = experiments.Trainer(
     lambda: gym.make('LunarLander-v2'),
     samples_per_update=1,
     metrics='all',
-    log_dir=pathlib.Path(ROOT).joinpath('logs/LunarLander/config_0')
+    log_dir=pathlib.Path(ROOT).joinpath('logs/LunarLander/!config_0')
 )
 #%%
 trainer.train(
