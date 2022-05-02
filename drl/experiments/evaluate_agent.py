@@ -54,5 +54,6 @@ def evaluate_agent(
             score, env_steps = 0, 0
             episodes_played += 1
             observation = env.reset()
-
+    env.close()
+    
     return scores

@@ -67,7 +67,7 @@ class DQAgent:
         self.target_policy = EpsilonGreedyPolicy(self.epsilon)
         self.behaviour_policy = EpsilonGreedyPolicy(self.epsilon)
         self.memory = NstepReplayBuffer(mem_size, input_dims, 2, mod='numpy')
-        self.memory = Prioritized(self.memory)
+        # self.memory = Prioritized(self.memory)
 
         self.q_eval = DuelingDeepQNetwork(
             input_dims, n_actions, [128, 128]).to(self.device)
@@ -77,7 +77,7 @@ class DQAgent:
             p.requires_grad = False
 
         self.loss = torch.nn.MSELoss()
-        self.optimizer = torch.optim.RAdam(self.q_eval.parameters(), lr=lr)
+        self.optimizer = torch.optim.Adam(self.q_eval.parameters(), lr=lr)
 
         self.optimization_steps = 0
 
@@ -141,16 +141,15 @@ class DQAgent:
         )
 
     def _update_network_parameters(self):
-        # self.q_target.load_state_dict(self.q_eval.state_dict())
-
-        st_target = self.q_target.state_dict()
-        st_eval = self.q_eval.state_dict()
-        for key in st_target.keys():
+        state_target = self.q_target.state_dict()
+        state_eval = self.q_eval.state_dict()
+        for key in state_target.keys():
             if 'epsilon' in key:
                 continue
-            st_target[key] = (1 - 1 / self.replace_target) * st_target[key] + \
-                (1 / self.replace_target) * st_eval[key]
-        self.q_target.load_state_dict(st_target)
+            state_target[key] = (1 / self.replace_target) * state_eval[key] + \
+                (1 - 1 / self.replace_target) * state_target[key]
+
+        self.q_target.load_state_dict(state_target)
 
     def learn(self, debug=False):
         if len(self.memory) < self.min_history:
@@ -161,7 +160,7 @@ class DQAgent:
         return debug_info
 
     def _learn(self, debug=False):
-        states, actions, rewards, sample_weights = \
+        states, actions, rewards = \
             self.memory.sample(self.batch_size)
 
         states = torch.as_tensor(
@@ -170,8 +169,8 @@ class DQAgent:
             actions, dtype=torch.long, device=self.device)
         rewards = torch.as_tensor(
             rewards, dtype=torch.float32, device=self.device)
-        sample_weights = torch.as_tensor(
-            sample_weights, dtype=torch.float32, device=self.device)
+        # sample_weights = torch.as_tensor(
+        #     sample_weights, dtype=torch.float32, device=self.device)
 
         self._reset_noise()
         self.q_eval.eval()
@@ -189,8 +188,8 @@ class DQAgent:
         # prod = self.q_eval.features(state) * self.q_eval.features(next_state)
         # dot_prod = prod.mean()
 
-        q_current_eval = self.q_eval(state)
-        q_next_eval = self.q_eval(next_state)
+        q_current_eval, features_current = self.q_eval.q_and_features(state)
+        q_next_eval, features_next = self.q_eval.q_and_features(next_state)
         q_next_target = self.q_target(next_state)
         _, next_best_action_eval = q_next_eval.detach().max(dim=1)
         v_next = q_next_target[batch_index, next_best_action_eval]
@@ -200,11 +199,11 @@ class DQAgent:
 
         # loss = torch.mean(delta**2) / 4 + dot_prod / 10
         loss = delta**2
-        self.memory.update_last_priorities(
-            # (torch.abs(delta) + 1e-2).clip(0.1, 50.).detach().numpy()
-            (torch.argsort(delta.abs()) + 1).cpu().detach().numpy()
-        )
-        loss = torch.mean(loss * sample_weights) / 4
+        # self.memory.update_last_priorities(
+        #     # (torch.abs(delta) + 1e-2).clip(0.1, 50.).detach().numpy()
+        #     (torch.argsort(delta.abs()) + 1).cpu().detach().numpy()
+        # )
+        loss = torch.mean(loss) / 4
 
         # print(loss)
         # print(dot_prod)
@@ -214,13 +213,24 @@ class DQAgent:
         loss.backward()
         self.optimizer.step()
 
-        debug_info = {}
-        self.optimization_steps += 1
-        grad_norm = 0
-        for p in self.q_eval.parameters():
-            grad_norm += p.grad.detach().data.norm(2).item()**2
-        debug_info['grad_norm'] = grad_norm**0.5
-        debug_info['loss'] = loss.item()
+        # CONSTRUCTING DEBUG INFO
+        with torch.no_grad():
+            debug_info = {}
+            self.optimization_steps += 1
+            grad_norm = 0
+            weight_norm = 0
+            for name, p in self.q_eval.named_parameters():
+                if p.requires_grad and p.grad is not None:
+                    grad_norm += p.grad.detach().data.norm(2).item()**2
+                if 'weight' in name:
+                    weight_norm += p.norm(2).detach().item()**2
+            debug_info['weight_norm'] = weight_norm**0.5
+            debug_info['grad_norm'] = grad_norm**0.5
+            debug_info['loss'] = loss.detach().item()
+            debug_info['features_dot'] = torch.mean(
+                features_current * features_next).detach().item()
+            debug_info['features_cos'] = torch.nn.CosineSimilarity(dim=1)(
+                features_current, features_next).mean().detach().item()
 
         #########################################################
         # q_current = self.q_eval(state)

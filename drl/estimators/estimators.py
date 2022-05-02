@@ -28,7 +28,7 @@ class DuelingDeepQNetwork(torch.nn.Module):
         # self.A = torch.nn.Linear(self.neurons[-1], self.n_actions)
         self.V = NoisyLinear(self.neurons[-1], 1)
         self.A = NoisyLinear(self.neurons[-1], self.n_actions)
-        self._parametrize()
+        # self._parametrize()
 
     def forward(self, x):
         x = self.features(x)
@@ -37,7 +37,7 @@ class DuelingDeepQNetwork(torch.nn.Module):
         A = self.A(x)
         # torch.max(input, dim,) -> tuple(values, indices)
         # torch.mean(input, dim) -> Tensor(values)
-        Q = (V + (A - torch.max(A, dim=1, keepdim=True)[0]))
+        Q = (V + (A - torch.mean(A, dim=1, keepdim=True)))
 
         return Q
 
@@ -51,6 +51,13 @@ class DuelingDeepQNetwork(torch.nn.Module):
 
     def value(self, x):
         return self.V(self.features(x))
+
+    def q_and_features(self, x):
+        x = self.features(x)
+        V = self.V(x)
+        A = self.A(x)
+        Q = (V + (A - torch.mean(A, dim=1, keepdim=True)))
+        return Q, x
 
     def reset_noise(self):
         for name, child in self.named_children():

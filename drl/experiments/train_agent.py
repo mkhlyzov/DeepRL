@@ -1,4 +1,5 @@
 import json
+import pathlib
 import time
 
 import pandas as pd
@@ -10,15 +11,15 @@ import drl.utils as utils
 class Trainer(object):
     def __init__(
         self,
-        agent=None,
-        env_fn=None,
-        num_episodes=None,
-        steps_per_episode=None,
-        num_steps=None,
-        samples_per_update=8,
-        metricses=[],
-        verbose=1,
-        tensorboard=False
+        agent: object=None,
+        env_fn: callable=None,
+        num_episodes: int=None,
+        steps_per_episode: int=None,
+        num_steps: int=None,
+        samples_per_update: int=8,
+        metrics: list=[],
+        verbose: int=1,
+        log_dir: str=None
     ):
         """
         Args:
@@ -29,7 +30,7 @@ class Trainer(object):
             num_steps (int or float('inf')): number of interactions with \
                 environment. Unbounbed if float('inf').
             samples_per_update (int): Environment steps per optimization step.
-            metricses (list(string)): Metricses to consider when outputting \
+            metrics (list(string)): metrics to consider when outputting \
                 agent's performanse.
             verbose (int): Amount of output desired.
                 0: no output at all,
@@ -42,15 +43,25 @@ class Trainer(object):
         self.samples_per_update = samples_per_update
         self.verbose = verbose
 
-        self._supported_metricses = [
+        self.log_dir = log_dir
+        pathlib.Path(log_dir).mkdir(parents=True, exist_ok=True)
+
+        self._supported_metrics = [
             'loss', 'grad_norm', 'weight_norm',
-            'features_alignment', 'q_update_alignment', 'avg_q_value'
+            # 'q_update_alignment', 'avg_q_value',
+            'features_dot', 'features_cos'
         ]
-        self.metricses = metricses
-        self.alpha=0.05  # EMA smoothing coefficient for metricses
+        self.metrics = metrics
+        if metrics == 'all':
+            self.metrics = self._supported_metrics
+        self.alpha=0.05  # EMA smoothing coefficient for metrics
         self.reset()
 
     def reset(self):
+        self.report_file = pathlib.Path(self.log_dir).joinpath(
+            str(int(time.time())) + '.csv'
+        )
+
         self.env_steps_taken = 0
         self.episodes_played = 0
         self.optimization_steps_taken = 0
@@ -67,23 +78,25 @@ class Trainer(object):
             'eval_score': [],
             'time_per_env_step': [],
         }
-        for key in self.metricses:
+        for key in self.metrics:
             self.debug_info[key] = 0
             self.report_info[key] = []
 
     def train(
         self,
-        agent=None,
-        env_fn=None,
-        num_episodes=float('inf'),
-        steps_per_episode=float('inf'),
-        num_steps=float('inf'),
-        eval_freq=float('inf'),
-        report_freq=float('inf'),
-        eval_episodes=float('inf'),
-        eval_steps=float('inf'),
-        reset=False,
-        no_ops_evaluation=0
+        agent: object=None,
+        env_fn: callable=None,
+        num_episodes: int=float('inf'),
+        steps_per_episode: int=float('inf'),
+        num_steps: int=float('inf'),
+        eval_freq: int=float('inf'),
+        report_freq: int=float('inf'),
+        eval_episodes: int=float('inf'),
+        eval_steps: int=float('inf'),
+        no_ops_evaluation: int=0,
+        reset: bool=False,
+        plot: bool=True,
+        to_csv: bool=False
     ):
         """Train agent on self.env
 
@@ -137,7 +150,7 @@ class Trainer(object):
             if self.env_steps_taken % eval_freq == 0:
                 # Any number % float('inf') returns that number
                 pass
-                # EVALUATE PERFORMANCE, SNAPSHOT METRICSES.
+                # EVALUATE PERFORMANCE, SNAPSHOT metrics.
                 # ALL CALCULATIONS HERE
                 self.time_per_env_step = (time.time() - t0)  # / eval_freq
                 self._eval(eval_episodes, steps_per_episode,
@@ -150,7 +163,11 @@ class Trainer(object):
                 pass
                 # PLOT PERFORMANCE, DUMP RESULTS ON DISC.
                 # NO CALCULATIONS HERE
-                self.report()
+                if to_csv:
+                    self.to_csv(path=self.report_file)
+                if plot:
+                    self.plot()
+        env.close()
 
     def _on_training_start(self):
         pass
@@ -177,14 +194,11 @@ class Trainer(object):
         )
 
     def _process_debug_info(self, debug_info):
-        for key in self.metricses:
-            new_value = debug_info[key]
-
-            if len(self.debug_info[key]) != 0:
-                new_value = new_value * self.alpha + \
-                    self.debug_info[key][-1] * (1 - self.alpha)
-
-            self.report[key].append(new_value)
+        if debug_info is None:
+            return
+        for key in self.metrics:
+            self.debug_info[key] = debug_info[key] * self.alpha + \
+                self.debug_info[key] * (1 - self.alpha)
 
     def _eval(self, num_episodes, steps_per_episode, num_steps, no_ops):
         eval_scores = experiments.evaluate_agent(
@@ -202,45 +216,55 @@ class Trainer(object):
         self.report_info['eval_score'].append(sum(eval_scores) / len(eval_scores))
         self.report_info['time_per_env_step'].append(self.time_per_env_step)
 
+        for key in self.metrics:
+            self.report_info[key].append(self.debug_info[key])
+
     def _print_latest_statistics(self):
-        """Prints the most recent statistics (metricses)
+        """Prints the most recent statistics (and metrics)
+
+        Outputs:
+        #step: int, train_score: int, test_score: int,
+        frames: int, avg_time: float,
+        custom metrics(?):
+            weights_norm, features_alignment, avg_q_value,
+            q_update_alignment, gradient_norm
         """
+        def pretty_int(i):
+            if i > 1_000:
+                return str(i // 1_000) + 'k'
+            else:
+                return str(i)
+
         if len(self.report_info['eval_score']) == 0:
             print('No data to print. Try again later.')
 
         window = min(len(self.frames_per_episode), 100)
         fpe = sum(self.frames_per_episode[-window:]) // window
 
-        s = f'env_step {self.report_info["env_steps"][-1]}   ' + \
+        s = f'env_step {pretty_int(self.report_info["env_steps"][-1])}   ' + \
+            f'e={self.episodes_played}  ' + \
             f'train_score={self.report_info["train_score"][-1]:.1f}   ' + \
             f'eval_score={self.report_info["eval_score"][-1]:.1f}   ' + \
             f'frames={fpe}  ' + \
             f'time_taken={self.report_info["time_per_env_step"][-1]:.1f}'
         print(s)
 
-    def report(self, path=None):
-        """Outputs latest agent's metricses
+    def to_csv(self, path):
+        # Create parent directory if not exists
+        pathlib.Path(path).resolve().parent.mkdir(parents=True, exist_ok=True)
+        # Write statistics to file
+        df = pd.DataFrame(self.report_info)
+        df.to_csv(path, index=False)
+        # with open(path, 'w') as f:
+        #     json.dump(scores, f)
 
-        Outputs:
-        #step: int, train_score: int, test_score: int,
-        frames: int, avg_time: float,
-        custom metricses(?):
-            weights_norm, features_alignment, avg_q_value,
-            q_update_alignment, gradient_norm
-        """
+    def plot(self):
         plot_data = {
             'samples': self.report_info['env_steps'],
             'train_score': self.report_info['train_score'],
             'eval_score': self.report_info['eval_score'],
         }
         utils.plot(plot_data, 'samples')
-
-        if path:
-            # Write statistics to file
-            df = pf.DataFrame(self.report_info)
-            df.to_csv(path, index=False)
-            # with open('../logs/test2.txt', 'w') as f:
-            #     json.dump(scores, f)
 
 def train_agent(
     agent,

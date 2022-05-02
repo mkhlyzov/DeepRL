@@ -2,12 +2,9 @@ import sys
 import gc
 import importlib
 import json
-import os
+import pathlib
 import time
 
-# ROOT = os.path.dirname(os.path.abspath(os.getcwd()))
-# sys.path.append(os.path.join(ROOT, 'libs'))
-sys.path.append('/Users/a1/Dev/DeepRL')
 import gym
 from matplotlib import pyplot as plt
 import pandas as pd
@@ -15,6 +12,10 @@ import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from IPython.display import clear_output
+
+ROOT = pathlib.Path.cwd()
+# ROOT = '/Users/a1/Dev/DeepRL'
+sys.path.append(ROOT)
 
 import drl.agents as agents
 import drl.experiments as experiments
@@ -35,27 +36,23 @@ trainer = experiments.Trainer(
     agent,
     lambda: gym.make('LunarLander-v2'),
     samples_per_update=1,
-    metricses=[]
+    metrics='all',
+    log_dir=pathlib.Path(ROOT).joinpath('logs/LunarLander/config_0')
 )
 #%%
 trainer.train(
     num_steps=10_000_000, eval_freq=20_000, report_freq=100_000,
-    eval_steps=20_000
+    eval_steps=20_000, plot=True, to_csv=True
 )
-
+"""
+100k eval steps with noise reset: ~90s -> 120s???
+100k eval steps w/o  noise reset: ~75s -> 103s???
+100k train steps w/o prioritized 1spa: 120s
+100k train steps w   prioritized 1spa: 175s
+"""
 
 
 # clear_output(wait=True)
-
-# if i % 10 == 9:
-#     df = pd.DataFrame({
-#         'frames_observed': frames_history,
-#         'scores': scores,
-#         'grads': grads_history
-#     })
-#     df.to_csv('../logs/test2.csv', index=False)
-#     with open('../logs/test2.txt', 'w') as f:
-#         json.dump(scores, f)
 
 # if (i + 1) % 1_000 == 0:
 #     agent.save_model("./dqn_model_{}.h5".format(len(scores)))
@@ -75,8 +72,21 @@ trainer.train(
 # writer.add_scalars('relative weight update', agent.relative_weight_updates, steps)
 # writer.add_scalars('per-layer gradient norm', agent.per_layer_grad_norm, steps)
 
-
- #%%
+#%%
+t0 = time.time()
+eval_scores = experiments.evaluate_agent(
+    agent, env, num_steps=100_000, no_ops=0)
+print('time taken (s):', time.time() - t0)
+print('avg_eval_score =', np.mean(eval_scores))
+print('eval_score_std =', np.std(eval_scores))
+#%%
+weight_norm = 0
+for name, p in agent.q_eval.named_parameters():
+    if 'weight' in name:
+        weight_norm += p.norm(2) ** 2
+weight_norm = (weight_norm**0.5).detach().item()
+print(weight_norm)
+#%%
 agent.batch_size = 1
 agent.learn(debug=True)
 agent.batch_size = 64
@@ -153,23 +163,23 @@ n_actions = 4
 s1 = np.random.random((1, *input_shape))
 s64 = np.random.random((batch_size, *input_shape))
 
-tf_model = drl2.TFModel(input_shape, n_actions, [128, 128])
-torch_model = drl2.TorchModel(input_shape, n_actions, [128, 128])
+# tf_model = drl2.TFModel(input_shape, n_actions, [128, 128])
+# torch_model = drl2.TorchModel(input_shape, n_actions, [128, 128])
 #%%
-# s1 = torch.randn((1, *input_shape))
-# s64 = torch.randn((batch_size, *input_shape))
-# s = np.random.random(8)
+s1 = torch.randn((1, *input_shape))
+s64 = torch.randn((batch_size, *input_shape))
+s = np.random.random(8)
 
 counter = 0
 t0 = time.time()
 # with torch.autograd.profiler.profile(profile_memory=True) as prof:
-for i in range(10000):
+for i in range(10):
     # agent.q_eval.reset_noise()
     # agent.choose_action(s)
     # agent.learn()
-    # agent.q_eval(s64)
+    agent.q_eval(s64)
     # agent._update_network_parameters()
-    agent.memory.sample_buffer(64)
+    # agent.memory.sample_buffer(64)
     # agent.memory.mem_buffer.sample_buffer(64)
     # counter += set(np.random.choice(64*100, 64, replace=False)).__len__()
 print(time.time() - t0)
