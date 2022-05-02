@@ -53,7 +53,8 @@ def test_noisy_linear(n_iters=100_000):
 	}
 
 	def run(cfg, n_iters):
-		data = torch.randn(cfg['batch_size'], cfg['in_features'])
+		data = torch.randn(
+			cfg['batch_size'], cfg['in_features']).to(cfg['device'])
 		linear_layer = torch.nn.Linear(
 			cfg['in_features'], cfg['in_features']).to(cfg['device'])
 		noisy_layer = NoisyLinear(
@@ -121,8 +122,9 @@ def test_deep_q_network(n_iters=50_000):
 			noisy=True,
 			factorised=False,
 			parametrize=cfg['parametrize']
-		)
-		data = torch.randn(cfg['batch_size'], cfg['input_dims'])
+		).to(cfg['device'])
+		data = torch.randn(
+			cfg['batch_size'], cfg['input_dims']).to(cfg['device'])
 
 		print(f'cfg={cfg}, n_iters={n_iters}')
 
