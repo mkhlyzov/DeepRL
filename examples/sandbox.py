@@ -51,6 +51,9 @@ trainer.train(
 100k train steps w/o prioritized 1spa: 90->120s (if parameterized)
 100k train steps w   prioritized 1spa: ->175s
 """
+"""PaperSpace:
+100k train steps w/o prioritized 1spa: 145s 260s (cpu vs cuda)
+"""
 
 
 # clear_output(wait=True)

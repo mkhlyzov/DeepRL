@@ -54,6 +54,7 @@ def evaluate_agent(
             score, env_steps = 0, 0
             episodes_played += 1
             observation = env.reset()
+            # agent.q_eval.reset_noise()
     env.close()
     
     return scores

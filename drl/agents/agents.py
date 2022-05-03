@@ -172,7 +172,9 @@ class DQAgent:
         # sample_weights = torch.as_tensor(
         #     sample_weights, dtype=torch.float32, device=self.device)
 
-        self._reset_noise()
+        self.q_eval.reset_noise()
+        self.q_target.reset_noise()
+
         self.q_eval.eval()
         self.q_target.eval()
 
@@ -189,6 +191,7 @@ class DQAgent:
         # dot_prod = prod.mean()
 
         q_current_eval, features_current = self.q_eval.q_and_features(state)
+        # self.q_eval.reset_noise()
         q_next_eval, features_next = self.q_eval.q_and_features(next_state)
         q_next_target = self.q_target(next_state)
         _, next_best_action_eval = q_next_eval.detach().max(dim=1)

@@ -7,6 +7,9 @@ import pandas as pd
 import drl.experiments as experiments
 import drl.utils as utils
 
+GET_TIME = lambda: time.process_time()  # It does not include time elapsed during sleep
+# GET_TIME = lambda: time.perf_counter()  # It does include time elapsed during sleep
+
 
 class Trainer(object):
     def __init__(
@@ -74,6 +77,7 @@ class Trainer(object):
         self.report_info = {
             'env_steps': [],
             'optimization_steps': [],
+            'episodes': [],
             'train_score': [],
             'eval_score': [],
             'time_per_env_step': [],
@@ -117,7 +121,7 @@ class Trainer(object):
         env = self.env_fn()
         print('Environment is ready, starting training.')
 
-        t0 = time.time()
+        t0 = GET_TIME()
         observation = env.reset()
         self._on_episode_start()
 
@@ -152,11 +156,14 @@ class Trainer(object):
                 pass
                 # EVALUATE PERFORMANCE, SNAPSHOT metrics.
                 # ALL CALCULATIONS HERE
-                self.time_per_env_step = (time.time() - t0)  # / eval_freq
+                self.time_per_env_step = (GET_TIME() - t0)  # / eval_freq
                 self._eval(eval_episodes, steps_per_episode,
                            eval_steps, no_ops_evaluation)
                 self._print_latest_statistics()
-                t0 = time.time()
+                t0 = GET_TIME()
+
+                if to_csv:
+                    self.to_csv(path=self.report_file)
 
             if self.env_steps_taken % report_freq == 0:
                 # Any number % float('inf') returns that number
@@ -212,6 +219,7 @@ class Trainer(object):
         window = min(len(self.train_scores), 100)
         self.report_info['env_steps'].append(self.env_steps_taken)
         self.report_info['optimization_steps'].append(self.optimization_steps_taken)
+        self.report_info['episodes'].append(self.episodes_played)
         self.report_info['train_score'].append(sum(self.train_scores[-window:]) / window)
         self.report_info['eval_score'].append(sum(eval_scores) / len(eval_scores))
         self.report_info['time_per_env_step'].append(self.time_per_env_step)
@@ -242,7 +250,7 @@ class Trainer(object):
         fpe = sum(self.frames_per_episode[-window:]) // window
 
         s = f'env_step {pretty_int(self.report_info["env_steps"][-1])}   ' + \
-            f'e={self.episodes_played}  ' + \
+            f'e={self.report_info['episodes'][-1]}  ' + \
             f'train_score={self.report_info["train_score"][-1]:.1f}   ' + \
             f'eval_score={self.report_info["eval_score"][-1]:.1f}   ' + \
             f'frames={fpe}  ' + \
