@@ -250,7 +250,7 @@ class Trainer(object):
         fpe = sum(self.frames_per_episode[-window:]) // window
 
         s = f'env_step {pretty_int(self.report_info["env_steps"][-1])}   ' + \
-            f'e={self.report_info['episodes'][-1]}  ' + \
+            f'e={self.report_info["episodes"][-1]}  ' + \
             f'train_score={self.report_info["train_score"][-1]:.1f}   ' + \
             f'eval_score={self.report_info["eval_score"][-1]:.1f}   ' + \
             f'frames={fpe}  ' + \
