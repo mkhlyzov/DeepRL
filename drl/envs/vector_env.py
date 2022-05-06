@@ -22,11 +22,11 @@ class VectorEnv():
             raise ValueError()
         env = env_fn()
         if not (
-            hasattr(env, 'reset') and
-            hasattr(env, 'step') and
-            hasattr(env, 'close') and
-            hasattr(env, 'action_space') and
-            hasattr(env, 'observation_space')
+            hasattr(env, 'reset')
+            and hasattr(env, 'step')
+            and hasattr(env, 'close')
+            and hasattr(env, 'action_space')
+            and hasattr(env, 'observation_space')
         ):
             raise ValueError()
 
@@ -41,11 +41,16 @@ class VectorEnv():
         return obs
 
     def step(self, vectorized_action, auto_reset=False):
-        results = [env.step(a) for env, a in zip(self._envs, vectorized_action)]
-        self._last_obs, rews, dones, infos = zip(*results)
-        if auto_reset:
+        assert hasattr(vectorized_action, '__len__')
+        assert len(vectorized_action) == self.num_envs
+
+        results = [
+            env.step(a) for env, a in zip(self._envs, vectorized_action)
+        ]  # list of tuples
+        self._last_obs, rews, dones, infos = zip(*results)  # tuple of tuples
+        if auto_reset and any(dones):
             self.reset(dones)
-        return self._last_obs, rews, dones, infos
+        return self._last_obs, rews, dones, infos  # returns 4 tuples
 
     def seed(self, seeds):
         for env, seed in zip(self._envs, seeds):

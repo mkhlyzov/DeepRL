@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 
 class Policy(object):
@@ -8,31 +9,47 @@ class Policy(object):
     def __init__(self):
         pass
 
+    def sample(self, probs):
+        """Samples actions given probabilities
+
+            Sopports both minibatches and single data points.
+            Supports both torch.Tensor and numpy.ndarray inputs.
+            Returned data is always integer or iterable<int> because gym
+        environments don't support tensor inputs.
+        """
+        if len(probs.shape) > 2:
+            raise ValueError()
+
+        if isinstance(probs, torch.Tensor):
+            return self._sample_pytorch(probs)
+        elif isinstance(probs, np.ndarray):
+            return self._sample_numpy(probs)
+        else:
+            raise ValueError()
+
+    def _sample_numpy(self, probs):
+        if len(probs.shape) == 1:
+            return np.random.choice(probs.shape[-1], p=probs)
+        elif len(probs.shape) == 2:
+            actions = [
+                np.random.choice(probs.shape[-1], p=p) for p in probs]
+            return np.array(actions)
+        else:
+            raise ValueError()
+
+    def _sample_pytorch(self, probs):
+        action = torch.multinomial(probs, 1)
+        if len(action) == 1:
+            return action[0].item()
+        return np.array(action).squeeze()
+
     def distribution(self, q):
         # Return distribution over actions
-        pass
+        raise NotImplementedError()
 
-    def action(self, q: np.array):
-        # Sample action from self.distribution
-        # Operation supports minibatches only
-
-        if len(q.shape) == 1:
-            # single state
-            dist = self.distribution(q)
-            action = np.random.choice(q.shape[-1], p=dist)
-            return action
-
-        elif len(q.shape) == 2:
-            # minibatch
-            dist = self.distribution(q)
-            actions = np.zeros(q.shape[0], dtype=np.int8)
-            for i in range(q.shape[0]):
-                action = np.random.choice(q.shape[-1], p=dist[i])
-                actions[i] = action
-            return actions
-
-        else:
-            raise ValueError('Wrong shape of input data')
+    def action(self, q):
+        probs = self.distribution(q)
+        return self.sample(probs)
 
     def update(self, *args, **kwargs):
         # Update self to be similar to input policy
@@ -51,9 +68,25 @@ class GreedyPolicy(Policy):
         super(GreedyPolicy, self).__init__()
 
     def distribution(self, q):
-        # Return distribution over actions
-        d = np.equal(q, np.max(q, axis=-1, keepdims=True))
+        """
+        Warning. Returned distribution has dtype=float32 by default.
+        This can yield errors when trying to mix dtypes in pytorch later on.
+        """
+        if isinstance(q, torch.Tensor):
+            return self._distribution_pytorch(q)
+        elif isinstance(q, np.ndarray):
+            return self._distribution_numpy(q)
+        else:
+            raise ValueError()
+
+    def _distribution_numpy(self, q):
+        d = np.isclose(q, np.max(q, axis=-1, keepdims=True))
         d = d * (1 / d.sum(axis=-1, keepdims=True))
+        return d
+
+    def _distribution_pytorch(self, q):
+        d = torch.isclose(q, torch.max(q, dim=-1, keepdim=True)[0])
+        d = d * (1 / d.sum(dim=-1, keepdims=True))
         return d
 
     def action(self, q):
