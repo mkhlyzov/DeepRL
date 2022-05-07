@@ -53,7 +53,7 @@ class Policy(object):
 
     def update(self, *args, **kwargs):
         # Update self to be similar to input policy
-        pass
+        raise NotImplementedError()
 
 
 class GreedyPolicy(Policy):
@@ -68,10 +68,6 @@ class GreedyPolicy(Policy):
         super(GreedyPolicy, self).__init__()
 
     def distribution(self, q):
-        """
-        Warning. Returned distribution has dtype=float32 by default.
-        This can yield errors when trying to mix dtypes in pytorch later on.
-        """
         if isinstance(q, torch.Tensor):
             return self._distribution_pytorch(q)
         elif isinstance(q, np.ndarray):
@@ -81,17 +77,13 @@ class GreedyPolicy(Policy):
 
     def _distribution_numpy(self, q):
         d = np.isclose(q, np.max(q, axis=-1, keepdims=True))
-        d = d * (1 / d.sum(axis=-1, keepdims=True))
+        d = d * (1 / d.sum(axis=-1, keepdims=True, dtype=q.dtype))
         return d
 
     def _distribution_pytorch(self, q):
         d = torch.isclose(q, torch.max(q, dim=-1, keepdim=True)[0])
-        d = d * (1 / d.sum(dim=-1, keepdims=True))
+        d = d * (1 / d.sum(dim=-1, keepdims=True, dtype=q.dtype))
         return d
-
-    def action(self, q):
-        # Sample action from self.distribution
-        return np.argmax(q, axis=-1)
 
 
 class EpsilonGreedyPolicy(Policy):

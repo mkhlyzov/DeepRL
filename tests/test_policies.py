@@ -8,11 +8,12 @@ import torch
 sys.path.append(str(pathlib.Path(__file__).resolve().parent.parent))
 from drl.policies import (
     Policy,
-    GreedyPolicy
+    GreedyPolicy,
+    EpsilonGreedyPolicy
 )
 
 
-class BasePolicyTests(unittest.TestCase):
+class PolicySamplingTests(unittest.TestCase):
     """
 
     Intended use:
@@ -65,7 +66,7 @@ class BasePolicyTests(unittest.TestCase):
             probs = np.ones((5, 5, 5, 5))
             policy.sample(probs=probs)
 
-    def test_return_shape_should_mimic_batch_dimention(self):
+    def test_samples_shape_should_mimic_batch_dimention(self):
         policy = Policy()
         probs = np.ones(8) / 8
         action = policy.sample(probs)
@@ -87,11 +88,11 @@ class BasePolicyTests(unittest.TestCase):
         self.assertEqual(action.dtype, int)
         self.assertTupleEqual(action.shape, (64,))
 
-    def test_returned_samples_should_be_categorical(self):
+    def test_samples_should_be_categorical(self):
         policy = Policy()
         probs = np.ones((64, 8)) / 8.
         action = policy.sample(probs)
-        self.assertTrue(action.dtype == int)
+        self.assertEqual(action.dtype, int)
         self.assertTrue(
             ((action >= 0) * (action < 8)).all()
         )
@@ -103,7 +104,7 @@ class BasePolicyTests(unittest.TestCase):
 
         probs = torch.ones((64, 8)) / 8.
         action = policy.sample(probs)
-        self.assertTrue(action.dtype == int)
+        self.assertEqual(action.dtype, int)
         self.assertTrue(
             ((action >= 0) * (action < 8)).all()
         )
@@ -126,24 +127,98 @@ class BasePolicyTests(unittest.TestCase):
             self.assertGreater(count, 50)
 
 
-class GreedyPolicyTests(unittest.TestCase):
+class PolicyDistributionTests(unittest.TestCase):
 
-    def test_generated_numpy_distribution_is_correct(self):
-        policy = GreedyPolicy()
+    @classmethod
+    def setUpClass(cls):
+        if cls is PolicyDistributionTests:
+            raise unittest.SkipTest("DerivedPolicyTests")
+        super(PolicyDistributionTests, cls).setUpClass()
+
+    def test_generated_numpy_distribution_inherits_input_shape(self):
+        q = np.array([
+            [14, 17, 31, 18, 22],
+            [20, 86, 62, 52, 19],
+            [61, 73, 44, 27, 60],
+            [80, 69, 58, 32, 17],
+            [53, 16, 94, 90, 34],
+            [27, 13, 55, 41, 93]
+        ])
+        probs = self.policy.distribution(q)
+        self.assertTupleEqual(q.shape, probs.shape)
+
+        q = np.array([14, 17, 31, 18, 22])
+        probs = self.policy.distribution(q)
+        self.assertTupleEqual(q.shape, probs.shape)
+
+    def test_generated_pytorch_distribution_inherits_input_shape(self):
+        q = torch.tensor(np.array([
+            [14, 17, 31, 18, 22],
+            [20, 86, 62, 52, 19],
+            [61, 73, 44, 27, 60],
+            [80, 69, 58, 32, 17],
+            [53, 16, 94, 90, 34],
+            [27, 13, 55, 41, 93]
+        ]))
+        probs = self.policy.distribution(q)
+        self.assertTupleEqual(q.shape, probs.shape)
+
+        q = torch.tensor(np.array([14, 17, 31, 18, 22]))
+        probs = self.policy.distribution(q)
+        self.assertTupleEqual(q.shape, probs.shape)
+
+    def test_numpy_distribution_should_inherit_input_dtype_for_floats(self):
+        q = np.array([
+            [14, 17, 31, 18, 22],
+            [20, 86, 62, 52, 19]
+        ], dtype=np.float16)
+        probs = self.policy.distribution(q)
+        self.assertEqual(q.dtype, probs.dtype)
+
+    def test_pytorch_distribution_should_inherit_input_dtype_for_floats(self):
+        q = torch.tensor(np.array([
+            [14, 17, 31, 18, 22],
+            [20, 86, 62, 52, 19]
+        ], dtype=np.float16))
+        probs = self.policy.distribution(q)
+        self.assertEqual(q.dtype, probs.dtype)
+
+    def test_numpy_distribution_should_fail_to_inherit_integer_dtype(self):
+        q = np.array([
+            [14, 17, 31, 18, 22],
+            [20, 86, 62, 52, 19]
+        ], dtype=np.int32)
+        probs = self.policy.distribution(q)
+        self.assertNotEqual(q.dtype, probs.dtype)
+
+    def test_pytorch_distribution_should_fail_to_inherit_integer_dtype(self):
+        q = torch.tensor(np.array([
+            [14, 17, 31, 18, 22],
+            [20, 86, 62, 52, 19]
+        ], dtype=np.int32))
+        probs = self.policy.distribution(q)
+        self.assertNotEqual(q.dtype, probs.dtype)
+
+
+class GreedyPolicyTests(PolicyDistributionTests):
+
+    def setUp(self):
+        self.policy = GreedyPolicy()
+
+    def test_generated_numpy_1d_distribution_is_correct(self):
         q = np.array(
-            [14, 17, 31, 18, 22], dtype=np.float32)
+            [14, 17, 31, 18, 22])
         desired_probs = np.array(
             [0., 0., 1., 0., 0.])
-        probs = policy.distribution(q)
+        probs = self.policy.distribution(q)
         self.assertTrue(np.allclose(probs, desired_probs))
 
-    def test_generated_pytorch_distribution_is_correct(self):
-        policy = GreedyPolicy()
+    def test_generated_pytorch_1d_distribution_is_correct(self):
         q = torch.tensor(np.array(
             [14, 17, 31, 18, 22], dtype=np.float32))
         desired_probs = torch.tensor(np.array(
             [0., 0., 1., 0., 0.], dtype=np.float32))
-        probs = policy.distribution(q)
+        probs = self.policy.distribution(q)
         self.assertTrue(torch.allclose(probs, desired_probs))
 
     def test_generated_numpy_batch_distribution_is_correct(self):
@@ -155,7 +230,7 @@ class GreedyPolicyTests(unittest.TestCase):
             [80, 69, 58, 32, 17],
             [53, 16, 94, 90, 34],
             [27, 13, 55, 41, 93]
-        ], dtype=np.float32)
+        ])
         desired_probs = np.array([
             [0., 0., 1., 0., 0.],
             [0., 1., 0., 0., 0.],
@@ -187,6 +262,44 @@ class GreedyPolicyTests(unittest.TestCase):
         ], dtype=np.float32))
         probs = policy.distribution(q)
         self.assertTrue(torch.allclose(probs, desired_probs))
+
+# class EpsilonGreedyPolicyTests(GreedyPolicyTests):
+
+#     @unittest.skip('.')
+#     def test_generated_numpy_distribution_inherits_input_shape(self):
+#         policy = EpsilonGreedyPolicy()
+#         q = np.array([
+#             [14, 17, 31, 18, 22],
+#             [20, 86, 62, 52, 19],
+#             [61, 73, 44, 27, 60],
+#             [80, 69, 58, 32, 17],
+#             [53, 16, 94, 90, 34],
+#             [27, 13, 55, 41, 93]
+#         ])
+#         probs = policy.distribution(q)
+#         self.assertTupleEqual(q.shape, probs.shape)
+
+#         q = np.array([14, 17, 31, 18, 22])
+#         probs = policy.distribution(q)
+#         self.assertTupleEqual(q.shape, probs.shape)
+
+    # @unittest.skip('.')
+    # def test_generated_pytorch_distribution_inherits_input_shape(self):
+    #     policy = EpsilonGreedyPolicy()
+    #     q = torch.tensor(np.array([
+    #         [14, 17, 31, 18, 22],
+    #         [20, 86, 62, 52, 19],
+    #         [61, 73, 44, 27, 60],
+    #         [80, 69, 58, 32, 17],
+    #         [53, 16, 94, 90, 34],
+    #         [27, 13, 55, 41, 93]
+    #     ]))
+    #     probs = policy.distribution(q)
+    #     self.assertTupleEqual(q.shape, probs.shape)
+
+    #     q = torch.tensor(np.array([14, 17, 31, 18, 22]))
+    #     probs = policy.distribution(q)
+    #     self.assertTupleEqual(q.shape, probs.shape)
 
 
 if __name__ == '__main__':
