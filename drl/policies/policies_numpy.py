@@ -1,5 +1,4 @@
 import numpy as np
-import torch
 
 
 class Policy(object):
@@ -10,24 +9,6 @@ class Policy(object):
         pass
 
     def sample(self, probs):
-        """Samples actions given probabilities
-
-            Sopports both minibatches and single data points.
-            Supports both torch.Tensor and numpy.ndarray inputs.
-            Returned data is always integer or iterable<int> because gym
-        environments don't support tensor inputs.
-        """
-        if len(probs.shape) > 2:
-            raise ValueError()
-
-        if isinstance(probs, torch.Tensor):
-            return self._sample_pytorch(probs)
-        elif isinstance(probs, np.ndarray):
-            return self._sample_numpy(probs)
-        else:
-            raise ValueError()
-
-    def _sample_numpy(self, probs):
         if len(probs.shape) == 1:
             return np.random.choice(probs.shape[-1], p=probs)
         elif len(probs.shape) == 2:
@@ -37,18 +18,12 @@ class Policy(object):
         else:
             raise ValueError()
 
-    def _sample_pytorch(self, probs):
-        action = torch.multinomial(probs, 1)
-        if len(action) == 1:
-            return action[0].item()
-        return np.array(action).squeeze()
-
-    def distribution(self, q):
+    def probs(self, q):
         # Return distribution over actions
         raise NotImplementedError()
 
     def action(self, q):
-        probs = self.distribution(q)
+        probs = self.probs(q)
         return self.sample(probs)
 
     def update(self, *args, **kwargs):
@@ -67,41 +42,27 @@ class GreedyPolicy(Policy):
     def __init__(self):
         super(GreedyPolicy, self).__init__()
 
-    def distribution(self, q):
-        if isinstance(q, torch.Tensor):
-            return self._distribution_pytorch(q)
-        elif isinstance(q, np.ndarray):
-            return self._distribution_numpy(q)
-        else:
-            raise ValueError()
-
-    def _distribution_numpy(self, q):
+    def probs(self, q):
         d = np.isclose(q, np.max(q, axis=-1, keepdims=True))
         d = d * (1 / d.sum(axis=-1, keepdims=True, dtype=q.dtype))
-        return d
-
-    def _distribution_pytorch(self, q):
-        d = torch.isclose(q, torch.max(q, dim=-1, keepdim=True)[0])
-        d = d * (1 / d.sum(dim=-1, keepdims=True, dtype=q.dtype))
         return d
 
 
 class EpsilonGreedyPolicy(Policy):
     def __init__(self, epsilon):
         super(EpsilonGreedyPolicy, self).__init__()
-        assert (epsilon >= 0 and epsilon <= 1)
+        assert 0 <= epsilon <= 1
         self.epsilon = epsilon
 
-    def distribution(self, q):
-        # Return distribution over actions
+    def probs(self, q):
         d = np.isclose(q, np.max(q, axis=-1, keepdims=True))
-        d = d * (1 - self.epsilon) / d.sum(axis=-1, keepdims=True)
-        d += self.epsilon / q.shape[-1]
+        d = d / d.sum(axis=-1, keepdims=True)
+        d = d * (1 - self.epsilon) + self.epsilon / q.shape[-1]
         return d
 
     def update(self, new_epsilon):
-        if new_epsilon >= 0 and new_epsilon <= 1:
-            self.epsilon = new_epsilon
+        assert 0 <= new_epsilon <= 1
+        self.epsilon = new_epsilon
 
 
 class BoltzmannPolicy(Policy):
@@ -113,12 +74,14 @@ class BoltzmannPolicy(Policy):
 
     def __init__(self, temperature):
         super(BoltzmannPolicy, self).__init__()
+        assert temperature > 0
         self.tau = temperature
 
-    def distribution(self, q):
+    def probs(self, q):
         raise NotImplementedError()
 
     def update(self, new_temperature):
+        assert new_temperature > 0
         self.tau = new_temperature
 
 
@@ -132,7 +95,7 @@ class MellowMaxPolicy(Policy):
         super(MellowMaxPolicy, self).__init__()
         self.w = w
 
-    def distribution(self, q):
+    def probs(self, q):
         raise NotImplementedError()
 
     def update(self, new_w):
@@ -150,7 +113,7 @@ class MixedPolicy(Policy):
         if self.weights is None:
             self.weights = [1.] * len(self.policies)
 
-    def distribution(self, q):
+    def probs(self, q):
         d = np.zeros(q.shape)
         for i, policy in enumerate(self.policies):
             d += policy.distribution(q) * self.weights[i]

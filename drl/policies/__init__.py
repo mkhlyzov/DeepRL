@@ -1,1 +1,1 @@
-from drl.policies.policies import *
+from drl.policies.policies_torch import *
