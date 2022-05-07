@@ -15,7 +15,7 @@ from drl.policies import (
 )
 
 
-class TorchSamplingTests(unittest.TestCase):
+class TorchSamplingTest(unittest.TestCase):
 
     def setUp(self):
         self.probs1d = torch.ones(8, dtype=torch.float32) / 8.
@@ -63,64 +63,59 @@ class TorchSamplingTests(unittest.TestCase):
             self.assertGreater(count, 50)
 
 
-class TorchProbsTests(unittest.TestCase):
+class TorchProbsTestCase(object):
+    class TorchProbsTest(unittest.TestCase):
 
-    @classmethod
-    def setUpClass(cls):
-        if cls is TorchProbsTests:
-            raise unittest.SkipTest("DerivedPolicyTests")
-        super(TorchProbsTests, cls).setUpClass()
+        def setUp(self):
+            self.q1d = torch.tensor(np.array(
+                [14, 17, 31, 18, 22])
+            ).float()
+            self.q2d = torch.tensor(np.array([
+                [14, 17, 31, 18, 22],
+                [20, 86, 62, 52, 19],
+                [61, 73, 44, 27, 60],
+                [80, 69, 58, 32, 17],
+                [53, 16, 94, 90, 34],
+                [27, 13, 55, 41, 93]
+            ])).float()
 
-    def setUp(self):
-        self.q1d = torch.tensor(np.array(
-            [14, 17, 31, 18, 22])
-        ).float()
-        self.q2d = torch.tensor(np.array([
-            [14, 17, 31, 18, 22],
-            [20, 86, 62, 52, 19],
-            [61, 73, 44, 27, 60],
-            [80, 69, 58, 32, 17],
-            [53, 16, 94, 90, 34],
-            [27, 13, 55, 41, 93]
-        ])).float()
+        def test_generated_probs_inherits_input_shape(self):
+            probs = self.policy.probs(self.q1d)
+            self.assertTupleEqual(self.q1d.shape, probs.shape)
 
-    def test_generated_probs_inherits_input_shape(self):
-        probs = self.policy.probs(self.q1d)
-        self.assertTupleEqual(self.q1d.shape, probs.shape)
+            probs = self.policy.probs(self.q2d)
+            self.assertTupleEqual(self.q2d.shape, probs.shape)
 
-        probs = self.policy.probs(self.q2d)
-        self.assertTupleEqual(self.q2d.shape, probs.shape)
+        def test_generated_probs_should_inherit_input_dtype_for_floats(self):
+            dtype = torch.float16
+            probs = self.policy.probs(self.q2d.to(dtype))
+            self.assertEqual(probs.dtype, dtype)
 
-    def test_generated_probs_should_inherit_input_dtype_for_floats(self):
-        dtype = torch.float16
-        probs = self.policy.probs(self.q2d.to(dtype))
-        self.assertEqual(probs.dtype, dtype)
+            dtype = torch.float64
+            probs = self.policy.probs(self.q2d.to(dtype))
+            self.assertEqual(probs.dtype, dtype)
 
-        dtype = torch.float64
-        probs = self.policy.probs(self.q2d.to(dtype))
-        self.assertEqual(probs.dtype, dtype)
+        @unittest.skip('Undefined behaviour')
+        def test_generated_probs_should_fail_to_inherit_integer_dtype(self):
+            dtype = torch.int16
+            probs = self.policy.probs(self.q2d.to(dtype))
+            self.assertNotEqual(probs.dtype, dtype)
 
-    @unittest.skip('Undefined behaviour')
-    def test_generated_probs_should_fail_to_inherit_integer_dtype(self):
-        dtype = torch.int16
-        probs = self.policy.probs(self.q2d.to(dtype))
-        self.assertNotEqual(probs.dtype, dtype)
+            dtype = torch.int64
+            probs = self.policy.probs(self.q2d.to(dtype))
+            self.assertNotEqual(probs.dtype, dtype)
 
-        dtype = torch.int64
-        probs = self.policy.probs(self.q2d.to(dtype))
-        self.assertNotEqual(probs.dtype, dtype)
+        @unittest.skipUnless(torch.cuda.is_available(), 'cuda test')
+        def test_generated_probs_should_inherit_input_device(self):
+            device = torch.device('cuda')
+            probs = self.policy.probs(self.q1d.to(device))
+            self.assertEqual(probs.device, device)
 
-    @unittest.skipUnless(torch.cuda.is_available(), 'cuda test')
-    def test_generated_probs_should_inherit_input_device(self):
-        device = torch.device('cuda')
-        probs = self.policy.probs(self.q1d.to(device))
-        self.assertEqual(probs.device, device)
-
-        probs = self.policy.probs(self.q2d.to(device))
-        self.assertEqual(probs.device, device)
+            probs = self.policy.probs(self.q2d.to(device))
+            self.assertEqual(probs.device, device)
 
 
-class GreedyPolicyTests(TorchProbsTests):
+class GreedyPolicyTest(TorchProbsTestCase.TorchProbsTest):
 
     def setUp(self):
         super().setUp()
@@ -147,7 +142,7 @@ class GreedyPolicyTests(TorchProbsTests):
         self.assertTrue(torch.allclose(probs, desired_probs))
 
 
-class EpsilonGreedyPolicyTests(TorchProbsTests):
+class EpsilonGreedyPolicyTest(TorchProbsTestCase.TorchProbsTest):
 
     def setUp(self):
         super().setUp()
@@ -174,14 +169,14 @@ class EpsilonGreedyPolicyTests(TorchProbsTests):
         self.assertTrue(torch.allclose(probs, desired_probs))
 
 
-class BoltzmannPolicyTests(TorchProbsTests):
+class BoltzmannPolicyTests(TorchProbsTestCase.TorchProbsTest):
 
     def setUp(self):
         super().setUp()
         self.policy = BoltzmannPolicy(temperature=1)
 
 
-class MixedPolicyTests(TorchProbsTests):
+class MixedPolicyTests(TorchProbsTestCase.TorchProbsTest):
 
     def setUp(self):
         super().setUp()
