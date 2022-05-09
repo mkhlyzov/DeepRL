@@ -76,6 +76,7 @@ class BoltzmannPolicy(Policy):
         assert temperature > 0
         self.tau = temperature
 
+    @torch.no_grad()
     def probs(self, q):
         q_ = (q / self.tau).float()
         return torch.nn.functional.softmax(q_, dim=-1).to(q.dtype)

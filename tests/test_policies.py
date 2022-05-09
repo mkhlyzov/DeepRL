@@ -114,6 +114,15 @@ class TorchProbsTestCase(object):
             probs = self.policy.probs(self.q2d.to(device))
             self.assertEqual(probs.device, device)
 
+        def test_generated_probs_should_not_inherit_requires_grad(self):
+            self.q2d.requires_grad = True
+            probs = self.policy.probs(self.q2d)
+            self.assertFalse(probs.requires_grad)
+
+            self.q2d.requires_grad = False
+            probs = self.policy.probs(self.q2d)
+            self.assertFalse(probs.requires_grad)
+
 
 class GreedyPolicyTest(TorchProbsTestCase.TorchProbsTest):
 

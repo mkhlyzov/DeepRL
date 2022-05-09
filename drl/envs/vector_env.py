@@ -4,8 +4,8 @@ import numpy as np
 class VectorEnv():
     def __init__(
         self,
-        env_fn,
-        num_envs
+        env_fn: callable,
+        num_envs: int
     ):
         if num_envs <= 0:
             raise ValueError('num_envs should be positive: {num_envs}')

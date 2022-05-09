@@ -1,15 +1,9 @@
-"""Deep Reinforcement Learning Models and Agents
-
-implementation using pytorch
-"""
-
 import copy
 import sys
 import os
-
 import random
-import numpy as np
 
+import numpy as np
 import torch
 
 from drl.estimators import DuelingDeepQNetwork
@@ -19,267 +13,6 @@ from drl.replay_buffers import (
     Prioritized
 )
 from drl.policies import EpsilonGreedyPolicy
-
-
-class DQAgent:
-    """Deep Q Agent class.
-
-    This class implements deep Q-learning algorithm enhanced with following
-    mechanisms:
-    - Double Q learning
-        uses two networks, regular one for acting and learning, and target
-        network for assessing future Q values;
-    - Dual Q learning
-        devides Q network's flow into two: value and advantage;
-    - N-step Q learning
-        naive approach, unfolds Bellman equation n steps forward. Same as used
-        in Rainbow algorithm. This approach only works under assumption that
-        policy is optimal, which is not always the case. Can be used with
-        e-greedy policy if epsilon is low enough;
-    """
-
-    def __init__(
-        self,
-        input_dims, n_actions, gamma, n_steps=1,
-        epsilon=1e-2,  # no epsilon decay due to usage of NoisyNet
-        lr=3e-4, batch_size=64, mem_size=1_000_000, min_history=100_000,
-        replace_target=1000,
-        fname='DQAgent_model.h5',
-        device=None
-    ):
-        if device is None:
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.device = torch.device(device)
-
-        self.action_space = list(range(n_actions))
-        self.n_actions = n_actions
-        self.gamma = gamma              # Discount factor
-        self.n_steps = n_steps
-
-        self.epsilon = epsilon          # random action probability
-
-        self.batch_size = batch_size
-        self.min_history = min_history
-        self.model_file = fname
-
-        self.replace_target = replace_target
-        self.replace_target_counter = 0
-        self.target_policy = EpsilonGreedyPolicy(self.epsilon)
-        self.behaviour_policy = EpsilonGreedyPolicy(self.epsilon)
-        self.memory = NstepReplayBuffer(mem_size, input_dims, 2, mod='numpy')
-        # self.memory = Prioritized(self.memory)
-
-        self.q_eval = DuelingDeepQNetwork(
-            input_dims, n_actions, [128, 128]).to(self.device)
-        self.q_target = DuelingDeepQNetwork(
-            input_dims, n_actions, [128, 128]).to(self.device)
-        for p in self.q_target.parameters():
-            p.requires_grad = False
-
-        self.loss = torch.nn.MSELoss()
-        self.optimizer = torch.optim.Adam(self.q_eval.parameters(), lr=lr)
-
-        self.optimization_steps = 0
-
-    def _reset_noise(self):
-        # Resamples noise when working with NoisyDense networks
-        self.q_eval.reset_noise()
-        self.q_target.reset_noise()
-
-    def _remove_noise(self):
-        # Removes noise when working with NoisyDense networks
-        self.q_eval.remove_noise()
-        self.q_target.remove_noise()
-
-    @torch.no_grad()
-    def choose_action(self, observation):
-        self.q_eval.reset_noise()
-        self.q_eval.eval()
-        q = np.array(self.q_eval(
-            torch.as_tensor(observation[np.newaxis, :],
-                            dtype=torch.float32, device=self.device)
-        ).cpu().detach())[0]
-        action = self.behaviour_policy.action(q)
-        return action
-
-    def process_episode(
-        self, observations, actions, rewards, dones
-    ):
-        """Creates trajectories and puts them into replay buffer
-        """
-
-        for idx in range(0, len(observations)):
-            idx_next = idx + self.n_steps + 1
-
-            my_states = observations[idx:idx_next]
-            my_actions = actions[idx:idx_next]
-            my_rewards = rewards[idx:idx_next]
-
-            while len(my_states) < self.n_steps + 1:
-                my_states += [np.zeros(my_states[0].shape)]
-                my_actions += [my_actions[-1]]
-                my_rewards += [-np.inf]
-
-            n_step_reward = 0
-            for i in range(self.n_steps):
-                if np.isinf(my_rewards[i]):
-                    break
-                n_step_reward += np.power(self.gamma, i) * my_rewards[i]
-
-            my_states = [my_states[0], my_states[-1]]
-            my_actions = [my_actions[0], my_actions[-1]]
-            my_rewards = [n_step_reward, my_rewards[-1]]
-            # last reward is used as a proxy for "done" flag
-
-            self.remember(my_states, my_actions, my_rewards)
-
-    def remember(self, states, actions, rewards):
-        self.memory.store_transition(
-            torch.as_tensor(np.array(states)),
-            torch.as_tensor(np.array(actions)),
-            torch.as_tensor(np.array(rewards))
-        )
-
-    def _update_network_parameters(self):
-        state_target = self.q_target.state_dict()
-        state_eval = self.q_eval.state_dict()
-        for key in state_target.keys():
-            if 'epsilon' in key:
-                continue
-            state_target[key] = (1 / self.replace_target) * state_eval[key] + \
-                (1 - 1 / self.replace_target) * state_target[key]
-
-        self.q_target.load_state_dict(state_target)
-
-    def learn(self, debug=False):
-        if len(self.memory) < self.min_history:
-            return
-
-        debug_info = self._learn(debug=debug)
-        self._update_network_parameters()
-        return debug_info
-
-    def _learn(self, debug=False):
-        states, actions, rewards = \
-            self.memory.sample(self.batch_size)
-
-        states = torch.as_tensor(
-            states, dtype=torch.float32, device=self.device)
-        actions = torch.as_tensor(
-            actions, dtype=torch.long, device=self.device)
-        rewards = torch.as_tensor(
-            rewards, dtype=torch.float32, device=self.device)
-        # sample_weights = torch.as_tensor(
-        #     sample_weights, dtype=torch.float32, device=self.device)
-
-        self.q_eval.reset_noise()
-        self.q_target.reset_noise()
-
-        self.q_eval.eval()
-        self.q_target.eval()
-
-        state = states[:, 0, :]
-        action = actions[:, 0].to(dtype=torch.long)
-        reward = rewards[:, 0]
-        next_state = states[:, 1, :]
-        next_action = actions[:, 1].to(dtype=torch.long)
-        done = torch.isinf(rewards[:, 1])
-        batch_index = torch.arange(
-            self.batch_size, dtype=torch.long, device=state.device)
-
-        # prod = self.q_eval.features(state) * self.q_eval.features(next_state)
-        # dot_prod = prod.mean()
-
-        q_current_eval, features_current = self.q_eval.q_and_features(state)
-        # self.q_eval.reset_noise()
-        q_next_eval, features_next = self.q_eval.q_and_features(next_state)
-        q_next_target = self.q_target(next_state)
-        _, next_best_action_eval = q_next_eval.detach().max(dim=1)
-        v_next = q_next_target[batch_index, next_best_action_eval]
-
-        delta = np.power(self.gamma, self.n_steps) * v_next * ~done + \
-            reward - q_current_eval[batch_index, action]
-
-        # loss = torch.mean(delta**2) / 4 + dot_prod / 10
-        loss = delta**2
-        # self.memory.update_last_priorities(
-        #     # (torch.abs(delta) + 1e-2).clip(0.1, 50.).detach().numpy()
-        #     (torch.argsort(delta.abs()) + 1).cpu().detach().numpy()
-        # )
-        loss = torch.mean(loss) / 4
-
-        # print(loss)
-        # print(dot_prod)
-        # print("")
-
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-
-        # CONSTRUCTING DEBUG INFO
-        with torch.no_grad():
-            debug_info = {}
-            self.optimization_steps += 1
-            grad_norm = 0
-            weight_norm = 0
-            for name, p in self.q_eval.named_parameters():
-                if p.requires_grad and p.grad is not None:
-                    grad_norm += p.grad.detach().data.norm(2).item()**2
-                if 'weight' in name:
-                    weight_norm += p.norm(2).detach().item()**2
-            debug_info['weight_norm'] = weight_norm**0.5
-            debug_info['grad_norm'] = grad_norm**0.5
-            debug_info['loss'] = loss.detach().item()
-            debug_info['features_dot'] = torch.mean(
-                features_current * features_next).detach().item()
-            debug_info['features_cos'] = torch.nn.CosineSimilarity(dim=1)(
-                features_current, features_next).mean().detach().item()
-
-        #########################################################
-        # q_current = self.q_eval(state)
-        # q_next = self.q_eval(next_state)
-        # v_next = np.power(self.gamma, self.n_steps) * \
-        #     q_next[batch_index, next_action] * ~done
-
-        # # v_next = self.q_target.value(next_state) * \
-        # #     np.power(self.gamma, self.n_steps) * ~done
-
-        # delta = reward + v_next - q_current[batch_index, action]
-        # # Q_loss = torch.mean(delta ** 2) / 4
-        # tau = 0.8
-        # with torch.no_grad():
-        #     c = (delta >= 0) * tau + (delta < 0) * (1 - tau)
-        # Q_loss = torch.mean(c * (delta ** 2)) / c.abs().mean()
-
-        # self.optimizer.zero_grad()
-        # Q_loss.backward()
-        # torch.nn.utils.clip_grad_norm_(self.q_eval.parameters(), 35.)
-        # self.optimizer.step()
-
-        # q_current = self.q_target(state)
-        # v_current = self.q_eval.value(state)
-        # delta = q_current[batch_index, action] - v_current
-        # tau = 0.9
-        # # (delta >= 0) * tau + (delta < 0) * (1 - tau)
-        # V_loss = torch.mean(torch.abs((delta < 0) + (-tau)) * (delta ** 2))
-
-        # self.optimizer.zero_grad()
-        # V_loss.backward()
-        # self.optimizer.step()
-
-        return debug_info
-
-    def save_model(self, fname=None):
-        if fname is None:
-            fname = self.model_file
-        torch.save(self.q_eval.state_dict(), fname)
-        print(f'Saved PyTorch Model State to {fname}')
-
-    def load_model(self, fname=None):
-        if fname is None:
-            fname = self.model_file
-        self.q_eval.load_state_dict(torch.load(fname))
-        self.q_target.load_state_dict(self.q_eval.state_dict())
 
 
 class ExpectedAgent():
@@ -321,7 +54,7 @@ class ExpectedAgent():
         # self.behaviour_policy = GreedyPolicy()
         self.target_policy = EpsilonGreedyPolicy(self.epsilon_min)
         self.behaviour_policy = EpsilonGreedyPolicy(self.epsilon)
-        self.memory = NstepReplayBuffer(mem_size, input_dims, self.n_steps + 1)
+        self.memory = NstepReplayBuffer(mem_size, input_dims, self.n_steps)
 
         self.q_eval = DuelingDeepQNetwork(
             input_dims, n_actions, [128, 128]).to(self.device)
@@ -368,7 +101,7 @@ class ExpectedAgent():
         action = self.behaviour_policy.action(q)
         return action
 
-    def process_episode(
+    def process_trajectory(
         self, observation_history, action_history,
         reward_history, done_history
     ):

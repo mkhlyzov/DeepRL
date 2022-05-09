@@ -28,7 +28,7 @@ class VectorEnvTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             VectorEnv(**self.cfg)
 
-    def test_shouldnt_create_when_passed_invalid_env_fn(self):
+    def test_should_not_create_when_passed_invalid_env_fn(self):
         self.cfg['env_fn'] = self.cfg['env_fn']()
         with self.assertRaises(ValueError):
             VectorEnv(**self.cfg)
@@ -63,7 +63,7 @@ class VectorEnvTests(unittest.TestCase):
         for obs in vec_observation:
             self.assertIn(obs, vec_env.observation_space)
 
-    def test_shouldnt_step_before_initialization(self):
+    def test_should_not_step_before_initialization(self):
         vec_env = VectorEnv(**self.cfg)
         random_vec_action = [
             vec_env.action_space.sample()
@@ -82,7 +82,7 @@ class VectorEnvTests(unittest.TestCase):
         vec_env.step(random_vec_action)
         vec_env.step(np.array(random_vec_action))
 
-    def test_step_method_shouldnt_work_with_non_iterable_action(self):
+    def test_step_method_should_not_work_with_non_iterable_action(self):
         vec_env = VectorEnv(**self.cfg)
         vec_env.reset()
         random_action = vec_env.action_space.sample()
@@ -91,7 +91,7 @@ class VectorEnvTests(unittest.TestCase):
         with self.assertRaises(Exception):
             vec_env.step(np.array(random_action))
 
-    def test_step_method_shouldnt_work_with_wrong_length_action(self):
+    def test_step_method_should_not_work_with_wrong_length_action(self):
         vec_env = VectorEnv(**self.cfg)
         vec_env.reset()
         random_vec_action = [
