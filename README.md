@@ -15,6 +15,7 @@ documentation and won't have any time soon.
 
 Better install these python packages or it won't work:
 - pytorch
+- gym[Box2D]
 - numpy
 - pandas
 - matplotlib
