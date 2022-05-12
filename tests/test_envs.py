@@ -140,6 +140,9 @@ class VectorEnvTests(unittest.TestCase):
         self.assertNotEqual(i, max_episode_len - 1)
 
     def test_step_method_default_shouldnt_autoreset_episodes(self):
+        # gym outputs a warning for not resetting after episode is done
+        gym.logger.set_level(40)
+
         vec_env = VectorEnv(**self.cfg)
         max_episode_len = 1_000
         dones_old = [False] * vec_env.num_envs
@@ -159,6 +162,7 @@ class VectorEnvTests(unittest.TestCase):
                     return
             dones_old = dones_new
         self.assertNotEqual(i, max_episode_len - 1)
+        gym.logger.set_level(30)
 
     def test_episodes_should_end_in_1000_steps_or_tests_are_incomplete(self):
         vec_env = VectorEnv(**self.cfg)

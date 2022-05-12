@@ -51,6 +51,7 @@ class VectorEnv():
         if auto_reset and any(dones):
             self.reset(dones)
         return self._last_obs, rews, dones, infos  # returns 4 tuples
+        # return np.array(self._last_obs), np.array(rews), np.array(dones), infos
 
     def seed(self, seeds):
         for env, seed in zip(self._envs, seeds):

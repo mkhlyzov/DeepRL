@@ -98,7 +98,7 @@ class NstepReplayBuffer(Buffer):
             self.states_memory = np.zeros(
                 (self.mem_size, n_steps + 1, *observation_shape), dtype=np.float32)
             self.actions_memory = np.zeros(
-                (self.mem_size, n_steps + 1), dtype=np.int32)
+                (self.mem_size, n_steps + 1), dtype=np.int64)
             self.rewards_memory = np.zeros(
                 (self.mem_size, n_steps + 1), dtype=np.float32)
         elif mod == 'torch':

@@ -167,7 +167,7 @@ class DQAgentTests(unittest.TestCase):
         agent = DQAgent(**self.cfg)
         observation = env.reset()
         for step in range(max_steps):
-            action = agent.action(np.array(observation))
+            action = agent.action(observation)
             obs_, reward, done, debug = env.step(action)
             if any(done):
                 obs_ = env.reset(done)

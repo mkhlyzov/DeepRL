@@ -31,12 +31,12 @@ class Policy(object):
 
 
 class GreedyPolicy(Policy):
-    def probs(self, q):
+    def _probs(self, q):
         d = torch.isclose(q, torch.max(q, dim=-1, keepdim=True)[0])
         d = d * (1 / d.sum(dim=-1, keepdims=True, dtype=q.dtype))
         return d
 
-    def _probs(self, q):
+    def probs(self, q):
         # Faster implementation
         return (q == q.max(dim=-1, keepdim=True)[0]).to(q.dtype)
 
@@ -47,13 +47,13 @@ class EpsilonGreedyPolicy(Policy):
         assert (0 <= epsilon <= 1)
         self.epsilon = epsilon
 
-    def probs(self, q):
+    def _probs(self, q):
         d = torch.isclose(q, torch.max(q, dim=-1, keepdims=True)[0])
         d = d * (1 / d.sum(dim=-1, keepdims=True, dtype=q.dtype))
         d = d * (1 - self.epsilon) + self.epsilon / q.shape[-1]
         return d
 
-    def _probs(self, q):
+    def probs(self, q):
         # Faster implementation
         probs = GreedyPolicy.probs(self, q) * (1 - self.epsilon)
         probs += self.epsilon / q.shape[-1]
