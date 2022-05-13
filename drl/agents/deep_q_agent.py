@@ -101,9 +101,9 @@ class DQAgent(object):
         self.device = torch.device(device)
 
         self.behaviour_policy = behaviour_policy if behaviour_policy else \
-            BoltzmannPolicy(0.01)
+            BoltzmannPolicy(epsilon)
         self.target_policy = target_policy if target_policy else \
-            BoltzmannPolicy(0.01)
+            BoltzmannPolicy(epsilon)
 
         self.q_eval = DuelingDeepQNetwork(
             input_dims=self.observation_space.shape,
@@ -246,7 +246,7 @@ class DQAgent(object):
 
         self.optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.q_eval.parameters(), 50.)
+        # torch.nn.utils.clip_grad_norm_(self.q_eval.parameters(), 50.)
         self.optimizer.step()
 
         # CONSTRUCTING DEBUG INFO

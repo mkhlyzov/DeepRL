@@ -9,6 +9,9 @@ from torch.distributions.utils import lazy_property
 
 
 def _worker(remote, marshaled_env_fn):
+    # Ignore CTRL+C in the worker process
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
     env_fn = marshal.loads(marshaled_env_fn)
     env_fn = types.FunctionType(env_fn, globals())
     env = env_fn()

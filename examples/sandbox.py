@@ -1,8 +1,9 @@
-import sys
 import gc
 import importlib
 import json
+import logging
 import pathlib
+import sys
 import time
 
 import gym
@@ -18,32 +19,53 @@ ROOT = pathlib.Path.cwd()
 sys.path.append(ROOT)
 
 import drl.agents as agents
+import drl.envs as envs
 import drl.experiments as experiments
 import drl.utils as utils
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s: %(message)s',
+    datefmt='%H:%M:%S',
+)
 #####################################################################
 #%%
-# importlib.reload(drl)
+env_fn = lambda: gym.make('LunarLander-v2')
+env = envs.MultiprocessVectorEnv(env_fn, 8)
+#%%
 # writer = SummaryWriter('./runs/RAdam')
-env = gym.make('LunarLander-v2')
+env_fn = lambda: gym.make('LunarLander-v2')
+env = env_fn()
 
 agent = agents.DQAgent(
-    input_dims=env.observation_space.shape,
-    n_actions=env.action_space.n,
-    gamma=0.99, n_steps=1, epsilon=0., lr=5e-4,
-    batch_size=64, mem_size=500_000, min_history=1_000, replace_target=100
+    observation_space=env.observation_space,
+    action_space=env.action_space,
+    
+    noisy=True, noisy_use_factorized=False, parametrize=False,
+
+    behaviour_policy=None,
+    target_policy=None,
+    epsilon=0.01, replay_buffer=None,
+    mem_size=1_000_000, min_history=10_000, batch_size=64,
+    lr=3e-4, gamma=0.99, n_steps=4, replace_target=100,
+
+    optimizer_params={},
+
+    device=None,
+    fname='DQAgent_model.h5',
 )
 trainer = experiments.Trainer(
-    agent,
-    lambda: gym.make('LunarLander-v2'),
+    agent, env_fn,
     samples_per_update=1,
     metrics='all',
-    log_dir=pathlib.Path(ROOT).joinpath('logs/LunarLander/!config_0')
+    log_dir=pathlib.Path(ROOT).joinpath('logs/LunarLander/!config_0'),
+    num_envs=8,
+    multiprocessing=True
 )
 #%%
 trainer.train(
     num_steps=10_000_000, eval_freq=20_000, report_freq=100_000,
-    eval_steps=20_000, plot=True, to_csv=True
+    eval_steps=30_000, plot=True, to_csv=True
 )
 """
 100k eval steps with noise reset: ~90s -> 120s???
@@ -53,85 +75,59 @@ trainer.train(
 """
 """PaperSpace:
 100k train steps w/o prioritized 1spa: 145s 260s (cpu vs cuda)
+(150?) 180 - 220 - 250+ (s) cpu training (best seen, average, worst)
 """
-
-
-# clear_output(wait=True)
-
-# if (i + 1) % 1_000 == 0:
-#     agent.save_model("./dqn_model_{}.h5".format(len(scores)))
-
-# steps = agent.optimization_steps
-# if steps < 1000:
-#     continue
-# elif steps > 14_000_000:  # SGD(1e-4) baseline was run for this long
-#     break
-# writer.add_scalar('average score', avg_score, steps)
-# writer.add_scalar('loss', agent.avg_loss, steps)
-# writer.add_scalar('Q value', agent.avg_q_value, steps)
-# writer.add_scalar('Q update alignment', agent.q_update_alignment, steps)
-# writer.add_scalar('features alignment', agent.features_alignment, steps)
-# writer.add_scalar('gradient norm', agent.grad_magnitude, steps)
-# writer.add_scalar('weight norm', agent.weight_norm, steps)
-# writer.add_scalars('relative weight update', agent.relative_weight_updates, steps)
-# writer.add_scalars('per-layer gradient norm', agent.per_layer_grad_norm, steps)
-
-#%%
-t0 = time.time()
-eval_scores = experiments.evaluate_agent(
-    agent, env, num_steps=100_000, no_ops=0)
-print('time taken (s):', time.time() - t0)
+#%% regular env evaluation
+t0 = time.perf_counter()
+eval_scores = experiments.evaluate_agent_old(
+    agent, env, num_steps=20_000, no_ops=0)
+print('time taken (s):', time.perf_counter() - t0)
 print('avg_eval_score =', np.mean(eval_scores))
 print('eval_score_std =', np.std(eval_scores))
-#%%
-weight_norm = 0
-for name, p in agent.q_eval.named_parameters():
-    if 'weight' in name:
-        weight_norm += p.norm(2) ** 2
-weight_norm = (weight_norm**0.5).detach().item()
-print(weight_norm)
-#%%
-agent.batch_size = 1
-agent.learn(debug=True)
-agent.batch_size = 64
-#%%
-# agent.q_eval.save_weights(os.path.join(ROOT, 'models/ckpt.tf'))
-#%%
-with open('./test.txt', 'w') as f:
-    json.dump(scores, f)
-#%%
+#%% vec_env evaluation
+t0 = time.perf_counter()
+eval_scores = experiments.evaluate_agent(
+    agent, env_fn, num_steps=100_000, no_ops=0, num_envs=32)
+print('time taken (s):', time.perf_counter() - t0)
+print('avg_eval_score =', np.mean(eval_scores))
+print('eval_score_std =', np.std(eval_scores))
+print(f'episods finished: {len(eval_scores)}')
 
-p = policies.EpsilonGreedyPolicy(0.1)
-q = np.array(
-    [
-         [112.3, 111.0, 105.8, 113.0],
-         [28, 25.1, 26.0, 18.9]
-    ]
-)
-q = np.array([[112.3, 112.99, 105.8, 113.0]])
-print(q)
-print(p.distribution(q))
-print(p.action(q))
-# a = []
-# t0 = time.time()
-# for i in range(100000):
-#     a.append(p.action(q))
-# print(time.time() - t0)
-#%%
-for layer in agent.q_eval.layers:
-    if 'dense' not in layer.name:
-        continue
-    layer.reset_noise()
-    weights = layer.get_weights()
-    w = weights[1]
-    b = weights[3]
-    print(
-        '<|w|> = {:.3f} ± {:.3f};   <|b|> = {:.3f} ± {:.3f};'.format(
-            np.mean(np.abs(w)), np.std(np.abs(w)), np.mean(np.abs(b)), np.std(np.abs(b))
-        )
-    )
-#%%
-# test run through environment
+# Fresh agent (random, 1400e) ~ 10s
+# Trained (1.2m steps, score=-200 diverged, hot cpu, 320e) ~ 64s
+# Trained (20k steps, score=-140, 216e) ~ 73s
+# Trained (40k steps, score=-60, 99e) ~ 110s
+# trained (280k steps, score=163, 203e) ~ 50s
+# Trained (420k steps, score=124, 234e) ~ 44s
+# Trained (600k steps, score=240, 160e) ~ 50s
+# Trained (880k steps, score=184, 404e) ~ 30s
+# Trained (1.5m steps, score=282, 485e) ~ 24s
+#%% testing agent.action time
+fake_state = [env.observation_space.sample() for j in range(32)]
+# fake_state = np.array(fake_state)
+t0 = time.perf_counter()
+for i in range(100_000 // 32):
+    agent.action(fake_state)
+print('agent.action 100k/32, time taken (s):', time.perf_counter() - t0)
+# Trained 600k steps //32 *32, time ~ 6.5s
+# Trained 880k steps //32 *32, time ~ 6.1s
+# Trained 1.5m steps //32 *32, time ~ 6.2s
+#%% testing env.step time
+t0 = time.perf_counter()
+done = True
+for i in range(100_000):
+    if done:
+        env.reset()
+    s_, r, done, _ = env.step(env.action_space.sample())
+print('env.step 100k, time taken (s):', time.perf_counter() - t0)
+# time ~ 12.5s
+#%% testing env.reset time
+t0 = time.perf_counter()
+for i in range(100_000):
+    env.reset()
+print('env.reset 100k, time taken (s):', time.perf_counter() - t0)
+# time ~ 30s
+#%% Playing for 1 episode
 env = gym.make('LunarLander-v2')
 done = False
 score = 0
@@ -153,40 +149,29 @@ print(time.time() - t0)
 env.close()
 env = gym.make('LunarLander-v2')
 #%%
-t0 = time.time()
-for i in range(10_000):
-    # agent.learn()
-    # agent.q_eval(tf.constant(s), training=False)
-    sub_model(tf.constant(s))
-    # sub_model.predict_on_batch(s)
-print(time.time() - t0)
-#%%
 batch_size = 64
-input_shape = (8,)
-n_actions = 4
+input_shape = env.observation_space.shape
+n_actions = env.action_space.n
 s1 = np.random.random((1, *input_shape))
 s64 = np.random.random((batch_size, *input_shape))
 
-# tf_model = drl2.TFModel(input_shape, n_actions, [128, 128])
-# torch_model = drl2.TorchModel(input_shape, n_actions, [128, 128])
-#%%
 s1 = torch.randn((1, *input_shape))
 s64 = torch.randn((batch_size, *input_shape))
 s = np.random.random(8)
 
 counter = 0
-t0 = time.time()
+t0 = time.perf_counter()
 # with torch.autograd.profiler.profile(profile_memory=True) as prof:
-for i in range(10):
+for i in range(20_000):
     # agent.q_eval.reset_noise()
-    # agent.choose_action(s)
+    # agent.action(s64)
     # agent.learn()
-    agent.q_eval(s64)
+    # agent.q_eval(s64)
     # agent._update_network_parameters()
-    # agent.memory.sample_buffer(64)
+    # agent.memory.sample(64)
     # agent.memory.mem_buffer.sample_buffer(64)
     # counter += set(np.random.choice(64*100, 64, replace=False)).__len__()
-print(time.time() - t0)
+print(time.perf_counter() - t0)
 #%%
 tmp_dict = {i: 0 for i in range(4)}
 s = agent.memory.sample_buffer(1)[0][:, 0, :]

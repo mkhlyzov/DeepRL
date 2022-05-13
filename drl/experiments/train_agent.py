@@ -5,7 +5,7 @@ import time
 import numpy as np
 import pandas as pd
 
-from drl.envs import VectorEnv
+from drl.envs import VectorEnv, MultiprocessVectorEnv
 import drl.experiments as experiments
 import drl.utils as utils
 
@@ -214,7 +214,7 @@ class Trainer_old(object):
                 self.debug_info[key] * (1 - self.alpha)
 
     def _eval(self, num_episodes, steps_per_episode, num_steps, no_ops):
-        eval_scores = experiments.evaluate_agent_old(
+        eval_scores = experiments.evaluate_agent(
             self.agent, self.env_fn(),
             num_episodes=num_episodes,
             steps_per_episode=steps_per_episode,
@@ -289,13 +289,11 @@ class Trainer(object):
         self,
         agent: object = None,
         env_fn: callable = None,
-        num_episodes: int = None,
-        steps_per_episode: int = None,
-        num_steps: int = None,
         samples_per_update: int = 8,
         metrics: list = [],
         num_envs: int = 8,
-        log_dir: str = None
+        log_dir: str = None,
+        multiprocessing=False,
     ):
         """
         Args:
@@ -314,7 +312,10 @@ class Trainer(object):
 
         self.agent = agent
         self.env_fn = env_fn
-        self.vec_env = VectorEnv(env_fn, num_envs)
+        ENV_CONSTRUCTOR = MultiprocessVectorEnv if multiprocessing else \
+            VectorEnv
+        self.train_env = ENV_CONSTRUCTOR(env_fn, num_envs)
+        self.eval_env = ENV_CONSTRUCTOR(env_fn, num_envs)
         self.samples_per_update = samples_per_update
 
         self._supported_metrics = [
@@ -329,6 +330,10 @@ class Trainer(object):
             self.metrics = [m for m in metrics if m in self._supported_metrics]
         self.alpha = 0.05  # EMA smoothing coefficient for metrics rolling
         self.reset()
+
+    def __del__(self):
+        del self.train_env
+        del self.eval_env
 
     def reset(self):
         if self.to_csv:
@@ -387,7 +392,7 @@ class Trainer(object):
             self.logger.info('Continueing training from last step.')
 
         t0 = GET_TIME()
-        observation = self.vec_env.reset()
+        observation = self.train_env.reset()
         self._on_episode_start()
 
         while (
@@ -396,14 +401,14 @@ class Trainer(object):
         ):
             action = self.agent.action(observation)
 
-            observation_, reward, done, _ = self.vec_env.step(action)
-            self.score += np.array(reward)
+            observation_, reward, done, _ = self.train_env.step(action)
+            self.score += reward
             self._update_history(observation, action, reward, done)
             observation = observation_
 
-            self.env_steps_taken += self.vec_env.num_envs
+            self.env_steps_taken += self.train_env.num_envs
 
-            observation = self.vec_env.reset(done)
+            observation = self.train_env.reset(done)
             for i, d in enumerate(done):
                 if d:
                     self._on_episode_end(i)
@@ -434,22 +439,23 @@ class Trainer(object):
                     self.to_csv(path=self.report_file)
                 if plot:
                     self.plot()
-        self.vec_env.close()
+        self.train_env.close()
+        self.eval_env.close()
 
     def _on_training_start(self):
         pass
 
     def _on_episode_start(self, env_idx=None):
         if env_idx is None:
-            self.score = np.zeros(self.vec_env.num_envs)
+            self.score = np.zeros(self.train_env.num_envs)
             self.episode_started_at_steps = [
                 self.env_steps_taken
-            ] * self.vec_env.num_envs
+            ] * self.train_env.num_envs
 
-            self.observation_hist = [[] for _ in range(self.vec_env.num_envs)]
-            self.action_hist = [[] for _ in range(self.vec_env.num_envs)]
-            self.reward_hist = [[] for _ in range(self.vec_env.num_envs)]
-            self.done_hist = [[] for _ in range(self.vec_env.num_envs)]
+            self.observation_hist = [[] for _ in range(self.train_env.num_envs)]
+            self.action_hist = [[] for _ in range(self.train_env.num_envs)]
+            self.reward_hist = [[] for _ in range(self.train_env.num_envs)]
+            self.done_hist = [[] for _ in range(self.train_env.num_envs)]
         else:
             self.score[env_idx] = 0
             self.episode_started_at_steps[env_idx] = self.env_steps_taken
@@ -463,7 +469,7 @@ class Trainer(object):
         self.train_scores.append(self.score[env_idx])
         self.frames_per_episode.append(
             (self.env_steps_taken - self.episode_started_at_steps[env_idx])
-            // self.vec_env.num_envs
+            // self.train_env.num_envs
         )
 
         self.agent.process_trajectory(
@@ -485,12 +491,12 @@ class Trainer(object):
                 - self.optimization_steps_taken) > 0
 
     def _if_should_evaluate(self):
-        lower = (self.env_steps_taken - self.vec_env.num_envs) % self.eval_freq
+        lower = (self.env_steps_taken - self.train_env.num_envs) % self.eval_freq
         higher = self.env_steps_taken % self.eval_freq
         return lower > higher and self.env_steps_taken >= self.eval_freq
 
     def _if_should_report(self):
-        lower = (self.env_steps_taken - self.vec_env.num_envs) % self.report_freq
+        lower = (self.env_steps_taken - self.train_env.num_envs) % self.report_freq
         higher = self.env_steps_taken % self.report_freq
         return lower > higher and self.env_steps_taken >= self.report_freq
 
@@ -503,12 +509,11 @@ class Trainer(object):
 
     def _eval(self, num_episodes, steps_per_episode, num_steps, no_ops):
         eval_scores = experiments.evaluate_agent(
-            self.agent, self.env_fn,
+            self.agent, self.eval_env,
             num_episodes=num_episodes,
             steps_per_episode=steps_per_episode,
             num_steps=num_steps,
             no_ops=no_ops,
-            num_envs=self.vec_env.num_envs
         )
         # CONSTRUCT report_info FROM debug_info
         window = min(len(self.train_scores), 100)

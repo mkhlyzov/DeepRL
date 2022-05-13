@@ -47,7 +47,6 @@ class EvaluationTest(unittest.TestCase):
         env.close()
 
 
-@unittest.skip('.')
 class TrainigTest(unittest.TestCase):
 
     def setUp(self):

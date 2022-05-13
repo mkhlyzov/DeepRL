@@ -17,26 +17,21 @@ class DuelingDeepQNetwork(torch.nn.Module):
         self.n_actions = n_actions
         self.neurons = [np.prod(input_dims), *neurons]
 
+        LayerFN = NoisyLinear if noisy else torch.nn.Linear
+
         self.dense_layers = []
         for i in range(len(self.neurons) - 1):
             self.dense_layers.append(
                 # torch.nn.utils.parametrizations.orthogonal(layer)
                 # torch.nn.utils.weight_norm(layer)
-                # torch.nn.Linear(self.neurons[i], self.neurons[i + 1])
-                NoisyLinear(
-                    self.neurons[i], self.neurons[i + 1],
-                    use_factorised=factorised
-                )
+                LayerFN(self.neurons[i], self.neurons[i + 1])
             )
             self.register_module(f'dense{i}', self.dense_layers[i])
 
-        # self.V = torch.nn.Linear(self.neurons[-1], 1)
-        # self.A = torch.nn.Linear(self.neurons[-1], self.n_actions)
-        self.V = NoisyLinear(
-            self.neurons[-1], 1, use_factorised=factorised)
-        self.A = NoisyLinear(
-            self.neurons[-1], self.n_actions, use_factorised=factorised)
+        self.V = LayerFN(self.neurons[-1], 1)
+        self.A = LayerFN(self.neurons[-1], self.n_actions)
 
+        self.factorised_noise(factorised)
         if parametrize:
             self._parametrize()
 
@@ -66,7 +61,7 @@ class DuelingDeepQNetwork(torch.nn.Module):
         x = self.features(x)
         V = self.V(x)
         A = self.A(x)
-        Q = (V + (A - torch.mean(A, dim=1, keepdim=True)))
+        Q = V + (A - torch.mean(A, dim=1, keepdim=True))
         return Q, x
 
     def reset_noise(self):
