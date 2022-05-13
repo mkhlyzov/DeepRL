@@ -41,10 +41,6 @@ class MultiprocessVectorEnv():
     """
 
     def __init__(self, env_fn, num_envs):
-        print(multiprocessing.get_all_start_methods())
-        # multiprocessing.get_context(method=None)
-        print(multiprocessing.get_start_method())
-
         marshaled_env_fn = marshal.dumps(env_fn.__code__)
 
         forkserver_available = \

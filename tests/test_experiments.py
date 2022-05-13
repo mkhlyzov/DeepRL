@@ -8,11 +8,11 @@ import numpy as np
 
 sys.path.append(str(pathlib.Path(__file__).resolve().parent.parent))
 from drl.agents import DQAgent
+from drl.envs import MultiprocessVectorEnv
 from drl.experiments import (
     Trainer,
     Trainer_old,
     evaluate_agent,
-    evaluate_agent_old
 )
 
 
@@ -22,8 +22,12 @@ class EvaluationTest(unittest.TestCase):
         self.env_fn = lambda: gym.make('CartPole-v1')
         self.agent = DQAgent(env_fn=self.env_fn, device='cpu')
 
+    def test_raises_error_when_called_with_bad_arguments(self):
+        with self.assertRaises(ValueError):
+            evaluate_agent(self.agent, self.env_fn(), num_envs=4, num_steps=1000)
+
     def test_evaluates_agent_in_regular_environment(self):
-        scores = evaluate_agent_old(self.agent, self.env_fn, num_steps=1000)
+        scores = evaluate_agent(self.agent, self.env_fn, num_steps=1000)
         self.assertIsNotNone(scores)
 
     def test_evaluates_agent_in_vectorized_environment(self):
@@ -36,7 +40,14 @@ class EvaluationTest(unittest.TestCase):
             self.agent, self.env_fn, num_steps=1000, num_envs=1)
         self.assertIsNotNone(scores)
 
+    def test_evaluates_agen_in_multiprocess_vec_environment(self):
+        env = MultiprocessVectorEnv(self.env_fn, 4)
+        scores = evaluate_agent(self.agent, env, num_steps=1000)
+        self.assertIsNotNone(scores)
+        env.close()
 
+
+@unittest.skip('.')
 class TrainigTest(unittest.TestCase):
 
     def setUp(self):
