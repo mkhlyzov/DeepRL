@@ -6,10 +6,14 @@ import gym
 import numpy as np
 
 sys.path.append(str(pathlib.Path(__file__).resolve().parent.parent))
-from drl.envs import VectorEnv
+from drl.envs import (
+    VectorEnv,
+    MultiprocessVectorEnv,
+)
 
 
-class VectorEnvTests(unittest.TestCase):
+@unittest.skip('.')
+class VectorEnvTest(unittest.TestCase):
     def setUp(self):
         self.cfg = {
             'env_fn': lambda: gym.make('CartPole-v1'),
@@ -178,6 +182,32 @@ class VectorEnvTests(unittest.TestCase):
             if any(dones):
                 break
         self.assertNotEqual(i, max_episode_len - 1)
+
+
+class MultiprocessVectorEnvTest(unittest.TestCase):
+
+    def setUp(self):
+        self.cfg = {
+            'env_fn': lambda: gym.make('CartPole-v1'),
+            'num_envs': 4
+        }
+        self.env = MultiprocessVectorEnv(**self.cfg)
+
+    def tearDown(self):
+        self.env.close()
+
+    def test_should_be_able_to_play_for_1000_steps(self):
+        num_steps = 1000
+        self.env.reset()
+
+        for i in range(num_steps):
+            random_action = [
+                self.env.action_space.sample()
+                for _ in range(self.env.num_envs)
+            ]
+            _1, _2, done, _3 = self.env.step(random_action)
+            if any(done):
+                self.env.reset(done)
 
 
 if __name__ == '__main__':
