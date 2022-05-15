@@ -2,10 +2,10 @@ import logging
 import pathlib
 import time
 
+from gym.vector import SyncVectorEnv, AsyncVectorEnv
 import numpy as np
 import pandas as pd
 
-from drl.envs import VectorEnv, MultiprocessVectorEnv
 import drl.experiments as experiments
 import drl.utils as utils
 
@@ -21,9 +21,6 @@ class Trainer_old(object):
         self,
         agent: object = None,
         env_fn: callable = None,
-        num_episodes: int = None,
-        steps_per_episode: int = None,
-        num_steps: int = None,
         samples_per_update: int = 8,
         metrics: list = [],
         verbose: int = 1,
@@ -46,6 +43,8 @@ class Trainer_old(object):
                 2: additionally saves intermediate results to csv on disc,
                 3: additionally saves intermediate results to tensorboard.
         """
+        self.logger = logging.getLogger(__name__)
+
         self.agent = agent
         self.env_fn = env_fn
         self.samples_per_update = samples_per_update
@@ -97,7 +96,6 @@ class Trainer_old(object):
         agent: object = None,
         env_fn: callable = None,
         num_episodes: int = float('inf'),
-        steps_per_episode: int = float('inf'),
         num_steps: int = float('inf'),
         eval_freq: int = float('inf'),
         report_freq: int = float('inf'),
@@ -120,12 +118,10 @@ class Trainer_old(object):
             self.env_fn = env_fn
         if (reset is True) or (self.env_steps_taken == 0):
             self.reset()
-            print('Starting training procedure from scratch.')
+            self.logger.info('Starting training procedure from scratch.')
         else:
-            print('Continueing training from last step.')
-        print('Creating environment instance, please wait...')
+            self.logger.info('Continueing training from last step.')
         env = self.env_fn()
-        print('Environment is ready, starting training.')
 
         t0 = GET_TIME()
         observation = env.reset()
@@ -163,8 +159,7 @@ class Trainer_old(object):
                 # EVALUATE PERFORMANCE, SNAPSHOT metrics.
                 # ALL CALCULATIONS HERE
                 self.time_per_env_step = (GET_TIME() - t0)  # / eval_freq
-                self._eval(eval_episodes, steps_per_episode,
-                           eval_steps, no_ops_evaluation)
+                self._eval(eval_episodes, eval_steps, no_ops_evaluation)
                 self._print_latest_statistics()
                 t0 = GET_TIME()
 
@@ -213,11 +208,10 @@ class Trainer_old(object):
             self.debug_info[key] = debug_info[key] * self.alpha + \
                 self.debug_info[key] * (1 - self.alpha)
 
-    def _eval(self, num_episodes, steps_per_episode, num_steps, no_ops):
+    def _eval(self, num_episodes, num_steps, no_ops):
         eval_scores = experiments.evaluate_agent(
             self.agent, self.env_fn(),
             num_episodes=num_episodes,
-            steps_per_episode=steps_per_episode,
             num_steps=num_steps,
             no_ops=no_ops
         )
@@ -253,7 +247,7 @@ class Trainer_old(object):
                 return str(i)
 
         if len(self.report_info['eval_score']) == 0:
-            print('No data to print. Try again later.')
+            self.logger.info('No data to print. Try again later.')
 
         window = min(len(self.frames_per_episode), 100)
         fpe = sum(self.frames_per_episode[-window:]) // window
@@ -264,16 +258,13 @@ class Trainer_old(object):
             f'eval_score={self.report_info["eval_score"][-1]:.1f}   ' + \
             f'frames={fpe}  ' + \
             f'time_taken={self.report_info["time_per_env_step"][-1]:.1f}'
-        print(s)
+        self.logger.info(s)
 
     def to_csv(self, path):
         # Create parent directory if not exists
         pathlib.Path(path).resolve().parent.mkdir(parents=True, exist_ok=True)
-        # Write statistics to file
         df = pd.DataFrame(self.report_info)
         df.to_csv(path, index=False)
-        # with open(path, 'w') as f:
-        #     json.dump(scores, f)
 
     def plot(self):
         plot_data = {
@@ -311,11 +302,10 @@ class Trainer(object):
         self.log_dir = log_dir
 
         self.agent = agent
-        self.env_fn = env_fn
-        ENV_CONSTRUCTOR = MultiprocessVectorEnv if multiprocessing else \
-            VectorEnv
-        self.train_env = ENV_CONSTRUCTOR(env_fn, num_envs)
-        self.eval_env = ENV_CONSTRUCTOR(env_fn, num_envs)
+        env_fns = [env_fn for _ in range(num_envs)]
+        ENV_CONSTRUCTOR = AsyncVectorEnv if multiprocessing else SyncVectorEnv
+        self.train_env = ENV_CONSTRUCTOR(env_fns)
+        self.eval_env = ENV_CONSTRUCTOR(env_fns)
         self.samples_per_update = samples_per_update
 
         self._supported_metrics = [
@@ -365,7 +355,6 @@ class Trainer(object):
     def train(
         self,
         num_episodes: int = float('inf'),
-        steps_per_episode: int = float('inf'),
         num_steps: int = float('inf'),
         eval_freq: int = float('inf'),
         report_freq: int = float('inf'),
@@ -408,7 +397,6 @@ class Trainer(object):
 
             self.env_steps_taken += self.train_env.num_envs
 
-            observation = self.train_env.reset(done)
             for i, d in enumerate(done):
                 if d:
                     self._on_episode_end(i)
@@ -424,8 +412,7 @@ class Trainer(object):
                 # ALL CALCULATIONS HERE
                 self.time_per_env_step = (
                     GET_TIME() - t0)
-                self._eval(eval_episodes, steps_per_episode,
-                           eval_steps, no_ops_evaluation)
+                self._eval(eval_episodes, eval_steps, no_ops_evaluation)
                 self._print_latest_statistics()
                 t0 = GET_TIME()
 
@@ -507,11 +494,10 @@ class Trainer(object):
             self.debug_info[key] = debug_info[key] * self.alpha + \
                 self.debug_info[key] * (1 - self.alpha)
 
-    def _eval(self, num_episodes, steps_per_episode, num_steps, no_ops):
+    def _eval(self, num_episodes, num_steps, no_ops):
         eval_scores = experiments.evaluate_agent(
             self.agent, self.eval_env,
             num_episodes=num_episodes,
-            steps_per_episode=steps_per_episode,
             num_steps=num_steps,
             no_ops=no_ops,
         )

@@ -7,8 +7,9 @@ import gym
 import numpy as np
 
 sys.path.append(str(pathlib.Path(__file__).resolve().parent.parent))
+from gym.vector import AsyncVectorEnv
+
 from drl.agents import DQAgent
-from drl.envs import MultiprocessVectorEnv
 from drl.experiments import (
     Trainer,
     Trainer_old,
@@ -41,7 +42,7 @@ class EvaluationTest(unittest.TestCase):
         self.assertIsNotNone(scores)
 
     def test_evaluates_agen_in_multiprocess_vec_environment(self):
-        env = MultiprocessVectorEnv(self.env_fn, 4)
+        env = AsyncVectorEnv([self.env_fn for _ in range(4)])
         scores = evaluate_agent(self.agent, env, num_steps=1000)
         self.assertIsNotNone(scores)
         env.close()
@@ -67,9 +68,18 @@ class TrainigTest(unittest.TestCase):
             num_steps=1_000, eval_freq=1_000, eval_steps=1_000,
             plot=False, to_csv=False)
 
-    def test_trains_agent_in_vectorized_environment(self):
+    def test_trains_agent_in_sync_vectorized_environment(self):
         trainer = Trainer(
-            self.agent, self.env_fn, samples_per_update=1, num_envs=8)
+            self.agent, self.env_fn,
+            samples_per_update=1, num_envs=8, multiprocessing=False)
+        trainer.train(
+            num_steps=1_000, eval_freq=1_000, eval_steps=1_000,
+            plot=False, to_csv=False)
+
+    def test_trains_agent_in_async_vectorized_environment(self):
+        trainer = Trainer(
+            self.agent, self.env_fn,
+            samples_per_update=1, num_envs=8, multiprocessing=True)
         trainer.train(
             num_steps=1_000, eval_freq=1_000, eval_steps=1_000,
             plot=False, to_csv=False)

@@ -1,6 +1,9 @@
+from gym.vector import (
+    VectorEnv,
+    SyncVectorEnv,
+    AsyncVectorEnv
+)
 import numpy as np
-
-from drl.envs import VectorEnv, MultiprocessVectorEnv
 
 
 """Single-env version of "evaluate_agent"
@@ -11,7 +14,6 @@ def _evaluate_agent_single_env(
     agent,
     env,
     num_episodes=float('inf'),
-    steps_per_episode=float('inf'),
     num_steps=float('inf'),
     no_ops=0,
 ):
@@ -21,7 +23,6 @@ def _evaluate_agent_single_env(
         agent (Agent): Agent used for trainig.
         env (Environment or callable): Environment used for training.
         num_episodes (int or float('inf')): \
-        steps_per_episode (int or float('inf')): \
         num_steps (int or float('inf')): \
         no_ops (int): Number of random actions (no-ops) for agent to take \
             at the beginning of each new episode.
@@ -50,7 +51,7 @@ def _evaluate_agent_single_env(
 
         env_steps += 1
         env_steps_total += 1
-        if done or (env_steps == steps_per_episode):
+        if done:
             scores.append(score)
             score, env_steps = 0, 0
             episodes_played += 1
@@ -60,11 +61,10 @@ def _evaluate_agent_single_env(
     return scores
 
 
-def _evaluate_agent_vec_env(
+def _evaluate_agent_vector_env(
     agent,
     env,
     num_episodes=float('inf'),
-    steps_per_episode=float('inf'),
     num_steps=float('inf'),
     no_ops=0,
 ):
@@ -74,7 +74,6 @@ def _evaluate_agent_vec_env(
         agent (Agent): Agent used for trainig.
         env_fn (callable): Environment used for training.
         num_episodes (int or float('inf')): \
-        steps_per_episode (int or float('inf')): \
         num_steps (int or float('inf')): \
         no_ops (int): Number of random actions (no-ops) for agent to take \
             at the beginning of each new episode.
@@ -97,8 +96,7 @@ def _evaluate_agent_vec_env(
     observation = env.reset()
     while (episodes_played < num_episodes) and (env_steps_total < num_steps):
         action = agent.action(observation)
-        random_action = np.array(
-            [env.action_space.sample() for i in range(env.num_envs)])
+        random_action = env.action_space.sample()
         mask = (env_steps < no_ops)
         action[mask] = random_action[mask]
 
@@ -108,10 +106,6 @@ def _evaluate_agent_vec_env(
 
         env_steps += 1
         env_steps_total += env.num_envs
-
-        done = np.array(done)
-        done[env_steps == steps_per_episode] = True
-        observation = env.reset(done)
 
         for i in range(env.num_envs):
             if not done[i]:
@@ -130,7 +124,6 @@ def evaluate_agent(
     num_envs=None,
 
     num_episodes=float('inf'),
-    steps_per_episode=float('inf'),
     num_steps=float('inf'),
     no_ops=0,
 ):
@@ -144,18 +137,17 @@ def evaluate_agent(
         if num_envs is None or num_envs == 1:
             env = env_fn()
         else:
-            env = VectorEnv(env_fn, num_envs)
+            env = SyncVectorEnv([env_fn for _ in range(num_envs)])
     elif env is None:
         raise ValueError("Expected testing environment (or constructor) \
             to be passed.")
     elif num_envs is not None:
         raise ValueError("Too many arguments.")
 
-    if isinstance(env, (VectorEnv, MultiprocessVectorEnv)):
-        return _evaluate_agent_vec_env(
+    if isinstance(env, VectorEnv):
+        return _evaluate_agent_vector_env(
             agent, env,
             num_episodes=num_episodes,
-            steps_per_episode=steps_per_episode,
             num_steps=num_steps,
             no_ops=no_ops,
         )
@@ -164,7 +156,6 @@ def evaluate_agent(
         return _evaluate_agent_single_env(
             agent, env,
             num_episodes=num_episodes,
-            steps_per_episode=steps_per_episode,
             num_steps=num_steps,
             no_ops=no_ops,
         )
