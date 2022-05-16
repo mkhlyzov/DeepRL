@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from IPython.display import clear_output
 #%%
-ROOT = list(pathlib.Path.home().glob('*/DeepRL/'))[0]
+ROOT = next(pathlib.Path().home().glob('*/DeepRL/'))
 logs_dir = 'logs/LunarLander'
 # columns = [
 #     'env_steps', 'optimization_steps', 'train_score', 'eval_score',
@@ -16,18 +16,19 @@ logs_dir = 'logs/LunarLander'
 #     'weight_norm', 'features_dot', 'features_cos'
 # ]
 my_dirs = [
-    # 'Adam_lr=1e-4',
+    'Adam_lr=1e-4',
     'Adam_lr=3e-4',
-    # 'Adam_lr=1e-3'
+    'Adam_lr=1e-3'
 ]
 index = 'env_steps'
-col_name = 'train_score'
+col_name = 'eval_score'
 
 def mask_index(idx):
     return idx[idx < 4_000_000]
 
 plt.style.use('seaborn')
 fig, ax = plt.subplots(dpi=500)
+# ax.set_ylim(200., 350.)
 
 for d in ROOT.joinpath(logs_dir).iterdir():
     if not d.is_dir() or d.name not in my_dirs:

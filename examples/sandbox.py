@@ -19,7 +19,6 @@ ROOT = pathlib.Path.cwd()
 sys.path.append(ROOT)
 
 import drl.agents as agents
-import drl.envs as envs
 import drl.experiments as experiments
 import drl.utils as utils
 
@@ -30,10 +29,6 @@ logging.basicConfig(
 )
 #####################################################################
 #%%
-env_fn = lambda: gym.make('LunarLander-v2')
-env = envs.MultiprocessVectorEnv(env_fn, 8)
-#%%
-# writer = SummaryWriter('./runs/RAdam')
 env_fn = lambda: gym.make('LunarLander-v2')
 env = env_fn()
 
@@ -59,8 +54,8 @@ trainer = experiments.Trainer(
     samples_per_update=1,
     metrics='all',
     log_dir=pathlib.Path(ROOT).joinpath('logs/LunarLander/!config_0'),
-    num_envs=8,
-    multiprocessing=True
+    num_envs=16,
+    multiprocessing=False
 )
 #%%
 trainer.train(
@@ -79,15 +74,15 @@ trainer.train(
 """
 #%% regular env evaluation
 t0 = time.perf_counter()
-eval_scores = experiments.evaluate_agent_old(
-    agent, env, num_steps=20_000, no_ops=0)
+eval_scores = experiments.evaluate_agent(
+    agent, env, num_steps=100_000, no_ops=0)
 print('time taken (s):', time.perf_counter() - t0)
 print('avg_eval_score =', np.mean(eval_scores))
 print('eval_score_std =', np.std(eval_scores))
 #%% vec_env evaluation
 t0 = time.perf_counter()
 eval_scores = experiments.evaluate_agent(
-    agent, env_fn, num_steps=100_000, no_ops=0, num_envs=32)
+    agent, env_fn, num_steps=100_000, no_ops=0, num_envs=8)
 print('time taken (s):', time.perf_counter() - t0)
 print('avg_eval_score =', np.mean(eval_scores))
 print('eval_score_std =', np.std(eval_scores))
@@ -163,6 +158,7 @@ counter = 0
 t0 = time.perf_counter()
 # with torch.autograd.profiler.profile(profile_memory=True) as prof:
 for i in range(20_000):
+    pass
     # agent.q_eval.reset_noise()
     # agent.action(s64)
     # agent.learn()
