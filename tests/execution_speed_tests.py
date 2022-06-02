@@ -1,8 +1,10 @@
+import functools
 import pathlib
 import sys
 import time
 
 import gym
+import numpy as np
 import torch
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -13,14 +15,12 @@ from drl.envs import *
 from drl.estimators import DuelingDeepQNetwork
 from drl.estimators.nn import NoisyLinear
 from drl.experiments import Trainer, evaluate_agent
-from drl.replay_buffers import NstepReplayBuffer, Prioritized
-
-
-# It does not include time elapsed during sleep
-# def GET_TIME(): return time.process_time()
-
-# It does include time elapsed during sleep
-def GET_TIME(): return time.perf_counter()
+from drl.utils import (
+    GET_TIME, output_highlighter, slow_down
+)
+from drl.replay_buffers import (
+    DequeBuffer, NumpyBuffer, ReplayBuffer, NstepReplayBuffer, Prioritized
+)
 
 
 class ConfigGenerator():
@@ -43,6 +43,7 @@ class ConfigGenerator():
         yield cfg_dict
 
 
+@output_highlighter
 def test_noisy_linear(n_iters=100_000):
     """
     Benchmark:
@@ -100,6 +101,7 @@ def test_noisy_linear(n_iters=100_000):
     print('test_noisy_linear: Tests performed.')
 
 
+@output_highlighter
 def test_deep_q_network(n_iters=50_000):
     """
     Benchmark:
@@ -162,6 +164,7 @@ def test_deep_q_network(n_iters=50_000):
     print('test_deep_q_network: Tests performed.')
 
 
+@output_highlighter
 def test_evaluation(n_iters=50_000):
     """
     Benchmark:
@@ -223,6 +226,7 @@ def test_evaluation(n_iters=50_000):
     print('test_evaluation: Tests performed.')
 
 
+@output_highlighter
 def test_training(n_iters=None):
     """
     Benchmark:
@@ -241,17 +245,45 @@ def test_training(n_iters=None):
     print('test_training: Tests performed.')
 
 
+@output_highlighter
 def test_replay_buffers(n_iters=None):
     """
     Benchmark:
-            - NstepReplayBuffer (data appending / batch sampling)
+            - DequeBuffer       (data appending / batch sampling)
+            - NumpyBuffer       (data appending / batch sampling)
+            - ReplayBuffer      (data appending / batch sampling)
             - Prioritized       (data appending / batch sampling)
     """
     config_dict = {
+        'buffer_constructor': [ReplayBuffer, NumpyBuffer, DequeBuffer],
+        'batch_size': [64]
     }
 
     def run(cfg, n_iters):
-        pass
+        max_size = 1_000_000
+        observation_shape = (8,)
+        buffer = cfg['buffer_constructor'](max_size, observation_shape)
+        fake_item = (
+            np.zeros(shape=observation_shape, dtype=np.float32),
+            0,
+            0.,
+            np.zeros(shape=observation_shape, dtype=np.float32),
+            0
+        )
+
+        print(f'cfg={cfg}, n_iters={n_iters}')
+
+        t0 = GET_TIME()
+        for _ in range(n_iters):
+            buffer.append(fake_item)
+        append_time = GET_TIME() - t0
+        print(f'Append time:    {append_time:.2f}s')
+
+        t0 = GET_TIME()
+        for _ in range(n_iters):
+            buffer.sample(cfg['batch_size'])
+        sample_time = GET_TIME() - t0
+        print(f'Sample time:    {sample_time:.2f}s')
 
     print('test_replay_buffers: Starting tests.\n')
     for cfg in ConfigGenerator()(config_dict):
@@ -260,16 +292,8 @@ def test_replay_buffers(n_iters=None):
     print('test_replay_buffers: Tests performed.')
 
 
-def print_separator():
-    print('============================================================')
-    print('============================================================')
-
-
 if __name__ == '__main__':
-    # print_separator()
     # test_noisy_linear(100_000)
-    # print_separator()
     # test_deep_q_network(50_000)
-    print_separator()
-    test_evaluation(100_000)
-    print_separator()
+    # test_evaluation(20_000)
+    test_replay_buffers(1_000_000)

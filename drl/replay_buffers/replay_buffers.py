@@ -1,6 +1,6 @@
 from collections.abc import Iterable
+from collections import deque
 
-import random
 import numpy as np
 
 
@@ -20,14 +20,19 @@ class Buffer(object):
 
     def _assert_idx_is_valid(self, idx):
         if isinstance(idx, int):
-            assert idx < len(self)
+            if idx < 0:
+                idx += self.mem_cntr % self.mem_size
+            assert 0 <= idx < len(self)
         elif isinstance(idx, Iterable):
             assert max(idx) < len(self)
+        return idx
 
-    def append(self, *args):
-        raise NotImplementedError()
+    def append(self, val):
+        idx = self.mem_cntr % self.mem_size
+        self.mem_cntr += 1
+        self[idx] = val
 
-    def sample(self, batch_size):
+    def sample(self, batch_size=1):
         idx = self._sample_index(batch_size)
         return self.__getitem__(idx)
 
@@ -54,39 +59,77 @@ class Buffer(object):
         self.mem_cntr = 0
 
 
+class DequeBuffer(Buffer):
+    def __init__(self, max_size, *args, **kwargs):
+        self.data = deque(maxlen=max_size)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        if isinstance(idx, int):
+            return self.data[idx]
+        batch = [self.data[i] for i in idx]
+        return tuple(np.array(items) for items in zip(*batch))
+
+    def __setitem__(self, idx, val):
+        self.data[idx] = val
+
+    def append(self, val):
+        self.data.append(val)
+
+    def clear(self):
+        self.data.clear()
+
+
+class NumpyBuffer(Buffer):
+    def __init__(self, max_size, *args, **kwargs):
+        super(NumpyBuffer, self).__init__(max_size=max_size)
+        self.data = np.zeros(max_size, dtype=object)
+
+    def __getitem__(self, idx):
+        idx = self._assert_idx_is_valid(idx)
+        batch = self.data[idx]
+        if isinstance(idx, int):
+            return batch
+        return tuple(np.array(items) for items in zip(*batch))
+
+    def __setitem__(self, idx, val):
+        idx = self._assert_idx_is_valid(idx)
+        self.data[idx] = val
+
+
 class ReplayBuffer(Buffer):
-    def __init__(self, max_size, input_shape, mod='numpy'):
+    def __init__(self, max_size, observation_shape, mod='numpy'):
         super(ReplayBuffer, self).__init__(max_size=max_size)
 
         assert mod == 'numpy'
 
-        self.state_memory = np.zeros((self.mem_size, *input_shape),
-                                     dtype=dtype)
-        self.new_state_memory = np.zeros((self.mem_size, *input_shape),
-                                         dtype=dtype)
-        self.action_memory = np.zeros(self.mem_size, dtype=np.int32)
+        self.state_memory = np.zeros(
+            (self.mem_size, *observation_shape), dtype=np.float32)
+        self.new_state_memory = np.zeros(
+            (self.mem_size, *observation_shape), dtype=np.float32)
+        self.action_memory = np.zeros(self.mem_size, dtype=np.int64)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.terminal_memory = np.zeros(self.mem_size, dtype=np.bool_)
 
     def __getitem__(self, idx):
-        self._assert_idx_is_valid(idx)
-
+        idx = self._assert_idx_is_valid(idx)
         state = self.state_memory[idx]
         state_ = self.new_state_memory[idx]
         action = self.action_memory[idx]
         reward = self.reward_memory[idx]
         terminal = self.terminal_memory[idx]
-
         return state, action, reward, state_, terminal
 
-    def append(self, state, action, reward, state_, done):
-        idx = self.mem_cntr % self.mem_size
+    def __setitem__(self, idx, val):
+        idx = self._assert_idx_is_valid(idx)
+        state, action, reward, state_, done = val
         self.state_memory[idx] = state
         self.new_state_memory[idx] = state_
         self.action_memory[idx] = action
         self.reward_memory[idx] = reward
         self.terminal_memory[idx] = int(done)
-        self.mem_cntr += 1
 
 
 class NstepReplayBuffer(Buffer):
@@ -113,20 +156,15 @@ class NstepReplayBuffer(Buffer):
             raise ValueError(f'Incorrect argument value mod={mod}')
 
     def __getitem__(self, idx):
-        self._assert_idx_is_valid(idx)
+        idx = self._assert_idx_is_valid(idx)
         states = self.states_memory[idx]
         actions = self.actions_memory[idx]
         rewards = self.rewards_memory[idx]
         return states, actions, rewards
 
     def __setitem__(self, idx, val):
-        self._assert_idx_is_valid(idx)
+        idx = self._assert_idx_is_valid(idx)
         states, actions, rewards = val
         self.states_memory[idx] = states
         self.actions_memory[idx] = actions
         self.rewards_memory[idx] = rewards
-
-    def append(self, states, actions, rewards):
-        idx = self.mem_cntr % self.mem_size
-        self.mem_cntr += 1
-        self[idx] = states, actions, rewards

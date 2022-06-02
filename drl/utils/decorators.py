@@ -1,6 +1,8 @@
 import functools
 import time
 
+from drl.utils.common import GET_TIME
+
 
 def output_highlighter(func):
     @functools.wraps(func)
