@@ -5,24 +5,33 @@ implementation using pytorch
 
 import copy
 
-from gym.spaces import Space
+import gym
 import numpy as np
 import torch
 
+from drl.agents.base_agent import BaseAgent
 from drl.estimators import DuelingDeepQNetwork
+from drl.optimizers import (
+    NGD,
+    AdaHessian,
+    KFAC,
+    EKFAC
+)
 from drl.replay_buffers import (
+    Buffer,
     ReplayBuffer,
     NstepReplayBuffer,
     Prioritized
 )
 from drl.policies import (
+    Policy,
     GreedyPolicy,
     EpsilonGreedyPolicy,
     BoltzmannPolicy
 )
 
 
-class DQAgent(object):
+class DQAgent(BaseAgent):
     """Deep Q Agent class.
 
     This class implements deep Q-learning algorithm enhanced with following
@@ -44,49 +53,38 @@ class DQAgent(object):
 
     def __init__(
         self,
-        env=None, env_fn=None, observation_space=None, action_space=None,
+        *,
+        env: gym.Env = None,
+        env_fn: callable = None,
+        observation_space: gym.spaces.Space = None,
+        action_space: gym.spaces.Space = None,
 
-        estimator=None,
-        noisy=True,
-        noisy_use_factorized=False,
-        parametrize=False,
+        estimator: torch.nn.Module = None,
+        noisy: bool = True,
+        noisy_use_factorized: bool = True,
+        parametrize: bool = True,
 
-        behaviour_policy=None,
-        target_policy=None,
-        epsilon=1e-2,  # For exploration. No decay due to NoisyNet
+        behaviour_policy: Policy = None,
+        target_policy: Policy = None,
+        epsilon: float = 1e-2,  # For exploration. No decay due to NoisyNet
 
-        replay_buffer=None,
-        mem_size=1_000_000, min_history=10_000, batch_size=64,
-        lr=3e-4, gamma=0.99, n_steps=1, replace_target=100,
+        replay_buffer: Buffer = None,
+        mem_size: int = 1_000_000,
+        min_history: int = 10_000,
+        batch_size: int = 64,
+        n_steps: int = 1,
+        replace_target: int = 100,
+        gamma: float = 0.99,
+        lr: float = 3e-4,
 
-        optimizer_params={},
-
-        device=None,
-        fname='DQAgent_model.h5',
+        device: str = None,
+        fname: str = 'DQAgent_model.h5',
     ):
-        if env:
-            if env_fn or observation_space or action_space:
-                raise ValueError('Too many env arguments')
-            self._assert_env_is_valid(env)
-            self.observation_space = env.observation_space
-            self.action_space = env.action_space
-        elif env_fn:
-            if observation_space or action_space:
-                raise ValueError('Too many env arguments')
-            self._assert_envfn_is_valid(env_fn)
-            env = env_fn()
-            self.observation_space = env.observation_space
-            self.action_space = env.action_space
-        elif observation_space and action_space:
-            self._assert_specs_are_valid(observation_space, action_space)
-            self.observation_space = observation_space
-            self.action_space = action_space
-        else:
-            raise AttributeError('Have to pass info about environment')
+        super().__init__(env=env, env_fn=env_fn,
+                         observation_space=observation_space,
+                         action_space=action_space)
 
-        self.memory = replay_buffer
-
-        self.memory = replay_buffer if replay_buffer is not None else \
+        self.replay_buffer = replay_buffer if replay_buffer is not None else \
             NstepReplayBuffer(mem_size, self.observation_space.shape, 1)
 
         self.min_history = min_history
@@ -118,28 +116,26 @@ class DQAgent(object):
             p.requires_grad = False
 
         self.optimizer = torch.optim.Adam(self.q_eval.parameters(), lr)
-
-    def _assert_env_is_valid(self, env):
-        if not hasattr(env, 'reset'):
-            raise ValueError('No reset method in {env}')
-        if not hasattr(env, 'step'):
-            raise ValueError('No step method in {env}')
-        if not hasattr(env, 'close'):
-            raise ValueError('No close method in {env}')
-        if not hasattr(env, 'action_space'):
-            raise ValueError('No action_space attribute in {env}')
-        if not hasattr(env, 'observation_space'):
-            raise ValueError('No action_space attribute in {env}')
-
-    def _assert_envfn_is_valid(self, env_fn):
-        assert callable(env_fn)
-        self._assert_env_is_valid(env_fn())
-
-    def _assert_specs_are_valid(self, observation_space, action_space):
-        if not isinstance(observation_space, Space):
-            raise ValueError('observation_space bad value')
-        if not isinstance(action_space, Space):
-            raise ValueError('action_space bad value')
+        # self.optimizer = AdaHessian(self.q_eval.parameters(), lr)
+        # self.optimizer = torch.optim.AdamW([
+        #     {
+        #         'params': [p for name, p in self.q_eval.named_parameters()
+        #                    if 'sigma' not in name],
+        #         'lr': lr,
+        #         'weight_decay': 1e-2
+        #     },
+        #     {
+        #         'params': [p for name, p in self.q_eval.named_parameters()
+        #                    if 'sigma' in name],
+        #         'lr': lr,
+        #         'weight_decay': 0
+        #     },
+        # ])
+        # self.preconditioner = KFAC(self.q_eval, 0.1)
+        # self.preconditioner = KFAC(
+        #     [p for name, p in self.q_eval.named_parameters()
+        #      if 'sigma' not in name], 0.1
+        # )
 
     @torch.no_grad()
     def action(self, observation):
@@ -186,31 +182,35 @@ class DQAgent(object):
             self.remember(my_states, my_actions, my_rewards)
 
     def remember(self, states, actions, rewards):
-        self.memory.append(
-            torch.as_tensor(np.array(states)),
-            torch.as_tensor(np.array(actions)),
-            torch.as_tensor(np.array(rewards))
-        )
+        self.replay_buffer.append((
+            np.array(states),
+            np.array(actions),
+            np.array(rewards)
+        ))
+
+    def _sample_batch_from_memory(self):
+        samples = self.replay_buffer.sample(self.batch_size)
+        batch = dict()
+        batch['states'] = torch.as_tensor(
+            samples[0], dtype=torch.float32, device=self.device)
+        batch['actions'] = torch.as_tensor(
+            samples[1], dtype=torch.long, device=self.device)
+        batch['rewards'] = torch.as_tensor(
+            samples[2], dtype=torch.float32, device=self.device)
+        if len(samples) == 4:
+            batch['weights'] = torch.as_tensor(
+                samples[3], dtype=torch.float32, device=self.device)
+        return batch
 
     def learn(self, debug=False):
-        if len(self.memory) < self.min_history:
+        if len(self.replay_buffer) < self.min_history:
             return
         debug_info = self._learn(debug=debug)
         self._update_network_parameters()
         return debug_info
 
     def _learn(self, debug=False):
-        states, actions, rewards = \
-            self.memory.sample(self.batch_size)
-
-        states = torch.as_tensor(
-            states, dtype=torch.float32, device=self.device)
-        actions = torch.as_tensor(
-            actions, dtype=torch.long, device=self.device)
-        rewards = torch.as_tensor(
-            rewards, dtype=torch.float32, device=self.device)
-        # sample_weights = torch.as_tensor(
-        #     sample_weights, dtype=torch.float32, device=self.device)
+        batch = self._sample_batch_from_memory()
 
         self.q_eval.reset_noise()
         self.q_target.reset_noise()
@@ -218,35 +218,43 @@ class DQAgent(object):
         self.q_eval.train()
         self.q_target.train()
 
-        state = states[:, 0, :]
-        action = actions[:, 0]
-        reward = rewards[:, 0]
-        next_state = states[:, 1, :]
-        next_action = actions[:, 1]
-        done = torch.isinf(rewards[:, 1])
+        state = batch['states'][:, 0, :]
+        action = batch['actions'][:, 0]
+        reward = batch['rewards'][:, 0]
+        next_state = batch['states'][:, 1, :]
+        next_action = batch['actions'][:, 1]
+        done = torch.isinf(batch['rewards'][:, 1])
         batch_index = torch.arange(
             self.batch_size, dtype=torch.long, device=state.device)
 
         q_current_eval, features_current = self.q_eval.q_and_features(state)
         # self.q_eval.reset_noise()
-        q_next_eval, features_next = self.q_eval.q_and_features(next_state)
-        q_next_target = self.q_target(next_state)
-
-        v_next = (q_next_target * self.target_policy.probs(q_next_eval)).sum(1)
+        # """Standart v_next with target network
+        with torch.no_grad():
+            q_next_eval, features_next = self.q_eval.q_and_features(next_state)
+            q_next_target = self.q_target(next_state)
+            v_next = (q_next_target * self.target_policy.probs(q_next_eval)).sum(1)
+        # """
+        # q_next_eval, features_next = self.q_eval.q_and_features(next_state)
+        # v_next = (q_next_eval * self.target_policy.probs(q_next_eval)).sum(1)
 
         delta = np.power(self.gamma, self.n_steps) * v_next * ~done + \
             reward - q_current_eval[batch_index, action]
 
         # loss = torch.mean(delta**2) / 4 + dot_prod / 10
-        loss = (delta**2).mean() / 4
-        # self.memory.update_last_priorities(
-        #     # (torch.abs(delta) + 1e-2).clip(0.1, 50.).detach().numpy()
-        #     (torch.argsort(delta.abs()) + 1).cpu().detach().numpy()
-        # )
+        loss = delta**2
+        if 'weights' in batch:
+            loss *= batch['weights']
+            self.replay_buffer.update_last_priorities(
+                # (torch.abs(delta) + 1e-2).clip(0.1, 50.).detach().numpy()
+                (torch.argsort(delta.abs()) + 1).cpu().detach().numpy()
+            )
+        loss = loss.mean() / 4
 
         self.optimizer.zero_grad()
         loss.backward()
-        # torch.nn.utils.clip_grad_norm_(self.q_eval.parameters(), 50.)
+        # torch.nn.utils.clip_grad_norm_(self.q_eval.parameters(), 10.)
+        # self.preconditioner.step()
         self.optimizer.step()
 
         # CONSTRUCTING DEBUG INFO
@@ -269,6 +277,8 @@ class DQAgent(object):
                 debug_info['features_cos'] = torch.nn.CosineSimilarity(dim=1)(
                     features_current, features_next).mean().detach().item()
 
+        # for p in self.q_eval.parameters():
+        #     p.grad = None
         return debug_info
 
     def _update_network_parameters(self):
