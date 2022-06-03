@@ -188,18 +188,16 @@ class DQAgent(BaseAgent):
             np.array(rewards)
         ))
 
-    def _sample_batch_from_memory(self):
+    def _sample_minibatch_from_replay_buffer(self):
         samples = self.replay_buffer.sample(self.batch_size)
+        keys = ['states', 'actions', 'rewards', 'weights']
+        dtypes = [torch.float32, torch.long, torch.float32, torch.float32]
         batch = dict()
-        batch['states'] = torch.as_tensor(
-            samples[0], dtype=torch.float32, device=self.device)
-        batch['actions'] = torch.as_tensor(
-            samples[1], dtype=torch.long, device=self.device)
-        batch['rewards'] = torch.as_tensor(
-            samples[2], dtype=torch.float32, device=self.device)
-        if len(samples) == 4:
-            batch['weights'] = torch.as_tensor(
-                samples[3], dtype=torch.float32, device=self.device)
+
+        for data, key, dtype in zip(samples, keys, dtypes):
+            batch[key] = torch.as_tensor(
+                data, dtype=dtype, device=self.device)
+
         return batch
 
     def learn(self, debug=False):
@@ -210,7 +208,7 @@ class DQAgent(BaseAgent):
         return debug_info
 
     def _learn(self, debug=False):
-        batch = self._sample_batch_from_memory()
+        batch = self._sample_minibatch_from_replay_buffer()
 
         self.q_eval.reset_noise()
         self.q_target.reset_noise()

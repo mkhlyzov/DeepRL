@@ -66,6 +66,7 @@ class BufferTestCase(object):
             for _ in range(self.max_size):
                 self.buffer.append(self.fake_item)
             batch = self.buffer.sample(batch_size)
+
             # batch is a sarsa-like tuple of np.ndarrays
             self.assertEqual(len(batch), len(self.fake_item))
             for batch_i, item_i in zip(batch, self.fake_item):
@@ -103,7 +104,21 @@ class NstepReplayBufferTest(BufferTestCase.BufferTest):
         )
 
 
-class NumpyBufferTest(BufferTestCase.BufferTest):
+class NumpyBufferTest_sarsa(BufferTestCase.BufferTest):
+
+    def setUp(self):
+        super().setUp()
+        self.buffer = NumpyBuffer(self.max_size)
+        self.fake_item = (
+            np.ones(self.observation_shape, dtype=np.float32),
+            1,
+            1.5,
+            np.ones(self.observation_shape, dtype=np.float32) * 2,
+            False
+        )
+
+
+class NumpyBufferTest_nstep(BufferTestCase.BufferTest):
 
     def setUp(self):
         super().setUp()

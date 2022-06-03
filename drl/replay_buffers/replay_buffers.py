@@ -6,7 +6,7 @@ import numpy as np
 
 class Buffer(object):
     def __init__(self, *args, **kwargs):
-        self.mem_size = kwargs['max_size']
+        self.capacity = kwargs['max_size']
         self.mem_cntr = 0
 
     def __getitem__(self, idx):
@@ -16,19 +16,19 @@ class Buffer(object):
         raise NotImplementedError()
 
     def __len__(self):
-        return min(self.mem_cntr, self.mem_size)
+        return min(self.mem_cntr, self.capacity)
 
     def _assert_idx_is_valid(self, idx):
         if isinstance(idx, int):
             if idx < 0:
-                idx += self.mem_cntr % self.mem_size
+                idx += self.mem_cntr % self.capacity
             assert 0 <= idx < len(self)
         elif isinstance(idx, Iterable):
             assert max(idx) < len(self)
         return idx
 
     def append(self, val):
-        idx = self.mem_cntr % self.mem_size
+        idx = self.mem_cntr % self.capacity
         self.mem_cntr += 1
         self[idx] = val
 
@@ -85,7 +85,7 @@ class DequeBuffer(Buffer):
 class NumpyBuffer(Buffer):
     def __init__(self, max_size, *args, **kwargs):
         super(NumpyBuffer, self).__init__(max_size=max_size)
-        self.data = np.zeros(max_size, dtype=object)
+        self.data = np.empty(max_size, dtype=object)
 
     def __getitem__(self, idx):
         idx = self._assert_idx_is_valid(idx)
@@ -106,12 +106,12 @@ class ReplayBuffer(Buffer):
         assert mod == 'numpy'
 
         self.state_memory = np.zeros(
-            (self.mem_size, *observation_shape), dtype=np.float32)
+            (self.capacity, *observation_shape), dtype=np.float32)
         self.new_state_memory = np.zeros(
-            (self.mem_size, *observation_shape), dtype=np.float32)
-        self.action_memory = np.zeros(self.mem_size, dtype=np.int64)
-        self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
-        self.terminal_memory = np.zeros(self.mem_size, dtype=np.bool_)
+            (self.capacity, *observation_shape), dtype=np.float32)
+        self.action_memory = np.zeros(self.capacity, dtype=np.int64)
+        self.reward_memory = np.zeros(self.capacity, dtype=np.float32)
+        self.terminal_memory = np.zeros(self.capacity, dtype=np.bool_)
 
     def __getitem__(self, idx):
         idx = self._assert_idx_is_valid(idx)
@@ -139,19 +139,19 @@ class NstepReplayBuffer(Buffer):
 
         if mod == 'numpy':
             self.states_memory = np.zeros(
-                (self.mem_size, n_steps + 1, *observation_shape), dtype=np.float32)
+                (self.capacity, n_steps + 1, *observation_shape), dtype=np.float32)
             self.actions_memory = np.zeros(
-                (self.mem_size, n_steps + 1), dtype=np.int64)
+                (self.capacity, n_steps + 1), dtype=np.int64)
             self.rewards_memory = np.zeros(
-                (self.mem_size, n_steps + 1), dtype=np.float32)
+                (self.capacity, n_steps + 1), dtype=np.float32)
         elif mod == 'torch':
             import torch
             self.states_memory = torch.zeros(
-                (self.mem_size, n_steps + 1, *observation_shape), dtype=torch.float32)
+                (self.capacity, n_steps + 1, *observation_shape), dtype=torch.float32)
             self.actions_memory = torch.zeros(
-                (self.mem_size, n_steps + 1), dtype=torch.long)
+                (self.capacity, n_steps + 1), dtype=torch.long)
             self.rewards_memory = torch.zeros(
-                (self.mem_size, n_steps + 1), dtype=torch.float32)
+                (self.capacity, n_steps + 1), dtype=torch.float32)
         else:
             raise ValueError(f'Incorrect argument value mod={mod}')
 

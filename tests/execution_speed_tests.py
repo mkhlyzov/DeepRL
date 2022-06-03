@@ -254,13 +254,22 @@ def test_replay_buffers(n_iters=None):
             - ReplayBuffer      (data appending / batch sampling)
             - Prioritized       (data appending / batch sampling)
     """
+    def PrioritizedReplayBuffer(*args, **kwargs):
+        return Prioritized(ReplayBuffer(*args, **kwargs))
+
     config_dict = {
-        'buffer_constructor': [ReplayBuffer, NumpyBuffer, DequeBuffer],
+        'buffer_constructor': [
+            ReplayBuffer,
+            NumpyBuffer,
+            # DequeBuffer,
+            PrioritizedReplayBuffer,
+        ],
+        'max_size': [1_000_000],
         'batch_size': [64]
     }
 
     def run(cfg, n_iters):
-        max_size = 1_000_000
+        max_size = cfg['max_size']
         observation_shape = (8,)
         buffer = cfg['buffer_constructor'](max_size, observation_shape)
         fake_item = (
