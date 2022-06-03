@@ -4,7 +4,7 @@ import time
 from drl.utils.common import GET_TIME
 
 
-def output_highlighter(func):
+def highlight_output(func):
     @functools.wraps(func)
     def decorated(*args, **kwargs):
         print('============================================================')

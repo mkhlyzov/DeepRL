@@ -16,7 +16,7 @@ from drl.estimators import DuelingDeepQNetwork
 from drl.estimators.nn import NoisyLinear
 from drl.experiments import Trainer, evaluate_agent
 from drl.utils import (
-    GET_TIME, output_highlighter, slow_down
+    GET_TIME, highlight_output, slow_down
 )
 from drl.replay_buffers import (
     DequeBuffer, NumpyBuffer, ReplayBuffer, NstepReplayBuffer, Prioritized
@@ -43,7 +43,7 @@ class ConfigGenerator():
         yield cfg_dict
 
 
-@output_highlighter
+@highlight_output
 def test_noisy_linear(n_iters=100_000):
     """
     Benchmark:
@@ -101,7 +101,7 @@ def test_noisy_linear(n_iters=100_000):
     print('test_noisy_linear: Tests performed.')
 
 
-@output_highlighter
+@highlight_output
 def test_deep_q_network(n_iters=50_000):
     """
     Benchmark:
@@ -164,7 +164,7 @@ def test_deep_q_network(n_iters=50_000):
     print('test_deep_q_network: Tests performed.')
 
 
-@output_highlighter
+@highlight_output
 def test_evaluation(n_iters=50_000):
     """
     Benchmark:
@@ -226,7 +226,7 @@ def test_evaluation(n_iters=50_000):
     print('test_evaluation: Tests performed.')
 
 
-@output_highlighter
+@highlight_output
 def test_training(n_iters=None):
     """
     Benchmark:
@@ -245,7 +245,7 @@ def test_training(n_iters=None):
     print('test_training: Tests performed.')
 
 
-@output_highlighter
+@highlight_output
 def test_replay_buffers(n_iters=None):
     """
     Benchmark:
