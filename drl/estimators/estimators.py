@@ -50,8 +50,8 @@ class DuelingDeepQNetwork(torch.nn.Module):
         x = torch.flatten(x, start_dim=1)
         for i in range(len(self.dense_layers)):
             x = self.dense_layers[i](x)
-            x = torch.nn.functional.dropout(x, rate)
-            # x *= torch.normal(1, rate / (1 - rate), size=x.shape)
+            # x = torch.nn.functional.dropout(x, rate)
+            x *= torch.normal(1, rate / (1 - rate), size=x.shape)
             x = torch.nn.functional.layer_norm(x, x.shape[1:])
             x = torch.nn.functional.selu(x)
             # x = torch.nn.functional.rrelu(x, training=self.training)

@@ -115,7 +115,8 @@ class DQAgent(BaseAgent):
         for p in self.q_target.parameters():
             p.requires_grad = False
 
-        self.optimizer = torch.optim.Adam(self.q_eval.parameters(), lr)
+        # self.optimizer = torch.optim.Adam(self.q_eval.parameters(), lr)
+        self.optimizer = NGD(self.q_eval.parameters(), lr)
         # self.optimizer = AdaHessian(self.q_eval.parameters(), lr)
         # self.optimizer = torch.optim.AdamW([
         #     {
