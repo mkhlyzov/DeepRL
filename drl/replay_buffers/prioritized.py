@@ -22,14 +22,21 @@ class Prioritized(object):
 
     """
 
-    def __init__(self, BufferInstance: Buffer, alpha=0.6):
+    def __init__(
+        self,
+        BufferInstance: Buffer,
+        *,
+        alpha=0.6,
+        max_priority=1.,
+    ):
         assert alpha >= 0
+        assert max_priority > 0
 
         self.mem_buffer = BufferInstance
         self.mem_buffer.clear()
 
         self.alpha = alpha
-        self.max_priority = 1.
+        self.max_priority = max_priority
         self.tree_ptr = 0
         # capacity must be positive and a power of 2.
         tree_capacity = 1
@@ -43,21 +50,24 @@ class Prioritized(object):
         self.last_indices = None  # used for updating priorities
         self.awaiting_priority_update = False
 
+    def __setitem__(self, idx, val):
+        self.mem_buffer[idx] = val
+        self.sum_tree[idx] = self.max_priority ** self.alpha
+        self.min_tree[idx] = self.max_priority ** self.alpha
+
     def __getitem__(self, idx):
         return (*self.mem_buffer[idx], self._calculate_weight(idx))
 
     def __len__(self):
         return len(self.mem_buffer)
 
-    def store_transition(self, *args, **kwargs):
-        self.mem_buffer.store_transition(*args, **kwargs)
-
+    def append(self, *args, **kwargs):
+        self.mem_buffer.append(*args, **kwargs)
         self.sum_tree[self.tree_ptr] = self.max_priority ** self.alpha
         self.min_tree[self.tree_ptr] = self.max_priority ** self.alpha
-        # self.tree_ptr = (self.tree_ptr + 1) % self.mem_buffer.mem_size
         self.tree_ptr = self.mem_buffer.mem_cntr % self.mem_buffer.mem_size
 
-    def sample(self, batch_size, beta=None):
+    def sample(self, batch_size=1, beta=None):
         """Sample a batch of experiences."""
         # assert not self.awaiting_priority_update
         assert len(self) >= batch_size
@@ -114,7 +124,6 @@ class Prioritized(object):
 
         for idx, priority in zip(self.last_indices, priorities):
             assert priority > 0
-
             self.sum_tree[idx] = priority ** self.alpha
             self.min_tree[idx] = priority ** self.alpha
             self.max_priority = max(self.max_priority, priority)

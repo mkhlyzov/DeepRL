@@ -142,5 +142,65 @@ class DequeBufferTest(BufferTestCase.BufferTest):
         )
 
 
+class SumSegmentTreeTest(unittest.TestCase):
+
+    def setUp(self):
+        self.capacity = 1024
+        self.tree = SumSegmentTree(self.capacity)
+
+    def test_should_create_normally(self):
+        pass
+
+    def test_sum_of_empty_shoul_be_zero(self):
+        self.assertEqual(self.tree.sum(), 0)
+
+    def test_after_adding_item_sum_should_not_be_zero(self):
+        self.tree[0] = 5
+        self.assertNotEqual(self.tree.sum(), 0)
+
+    def test_should_calculate_full_sum_correctly(self):
+        items = list(range(33, 77))
+        for i, item in enumerate(items):
+            self.tree[i] = item
+        self.assertEqual(self.tree.sum(), sum(items))
+
+    def test_sum_of_cleared_tree_should_be_zero(self):
+        self.test_should_calculate_full_sum_correctly()
+        self.tree.clear()
+        self.test_sum_of_empty_shoul_be_zero()
+
+    def test_sum_of_one_item_should_return_that_item(self):
+        items = list(range(33, 77))
+        for i, item in enumerate(items):
+            self.tree[i] = item
+        self.assertEqual(self.tree.sum(7, 8), items[7])
+
+    def test_should_calculate_subsum_correctly(self):
+        items = list(range(33, 77))
+        for i, item in enumerate(items):
+            self.tree[i] = item
+        idx1, idx2 = 4, 19
+        self.assertEqual(self.tree.sum(idx1, idx2), sum(items[idx1: idx2]))
+        idx1, idx2 = 17, 35
+        self.assertEqual(self.tree.sum(idx1, idx2), sum(items[idx1: idx2]))
+
+    def test_empty_sum_should_be_zero(self):
+        self.assertEqual(self.tree.sum(3, 3), 0)
+
+
+class MinSegmentTreeTest(unittest.TestCase):
+
+    def setUp(self):
+        self.capacity = 1024
+        self.tree = MinSegmentTree(self.capacity)
+
+    def test_should_calculate_argmin(self):
+        items = list(range(100))
+        np.random.shuffle(items)
+        for i, item in enumerate(items):
+            self.tree[i] = item
+        self.assertEqual(self.tree.argmin(), np.argmin(items))
+
+
 if __name__ == '__main__':
     unittest.main()

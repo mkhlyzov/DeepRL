@@ -3,10 +3,6 @@
 
 Taken from OpenAI baselinees github repository
 https://github.com/openai/baselines/blob/master/baselines/common/segment_tree.py
-
-Probably worth checking out modified version from
-Curt-Park/rainbow-is-all-you-need github repository
-https://github.com/Curt-Park/rainbow-is-all-you-need/blob/master/segment_tree.py
 """
 
 import operator
@@ -35,10 +31,16 @@ class SegmentTree(object):
             neutral element for the operation above. eg. float('-inf')
             for max and 0 for sum.
         """
-        assert capacity > 0 and capacity & (capacity - 1) == 0, "capacity must be positive and a power of 2."
+        assert capacity > 0 and capacity & (capacity - 1) == 0, \
+            "capacity must be positive and a power of 2."
         self._capacity = capacity
-        self._value = [neutral_element for _ in range(2 * capacity)]
+        self._neutral_element = neutral_element
         self._operation = operation
+        self.clear()
+
+    def clear(self):
+        self._value = [
+            self._neutral_element for _ in range(2 * self._capacity)]
 
     def _reduce_helper(self, start, end, node, node_start, node_end):
         if start == node_start and end == node_end:
@@ -56,38 +58,24 @@ class SegmentTree(object):
                 )
 
     def reduce(self, start=0, end=None):
-        """Returns result of applying `self.operation`
-        to a contiguous subsequence of the array.
-            self.operation(arr[start], operation(arr[start+1], operation(... arr[end])))
-        Parameters
-        ----------
-        start: int
-            beginning of the subsequence
-        end: int
-            end of the subsequences
-        Returns
-        -------
-        reduced: obj
-            result of reducing self.operation over the specified range of array elements.
-        """
         if end is None:
             end = self._capacity
         if end < 0:
             end += self._capacity
+        if start == end:
+            return self._neutral_element
         end -= 1
         return self._reduce_helper(start, end, 1, 0, self._capacity - 1)
 
     def __setitem__(self, idx, val):
-        # index of the leaf
         idx += self._capacity
         self._value[idx] = val
-        idx //= 2
-        while idx >= 1:
+        while idx >= 2:
+            idx //= 2
             self._value[idx] = self._operation(
                 self._value[2 * idx],
                 self._value[2 * idx + 1]
             )
-            idx //= 2
 
     def __getitem__(self, idx):
         assert 0 <= idx < self._capacity
@@ -103,12 +91,11 @@ class SumSegmentTree(SegmentTree):
         )
 
     def sum(self, start=0, end=None):
-        """Returns arr[start] + ... + arr[end]"""
         return super(SumSegmentTree, self).reduce(start, end)
 
     def find_prefixsum_idx(self, prefixsum):
         """Find the highest index `i` in the array such that
-            sum(arr[0] + arr[1] + ... + arr[i - i]) <= prefixsum
+            sum(arr[0] + arr[1] + ... + arr[i - 1]) <= prefixsum
         if array values are probabilities, this function
         allows to sample indexes according to the discrete
         probability efficiently.
@@ -141,6 +128,13 @@ class MinSegmentTree(SegmentTree):
         )
 
     def min(self, start=0, end=None):
-        """Returns min(arr[start], ...,  arr[end])"""
-
         return super(MinSegmentTree, self).reduce(start, end)
+
+    def argmin(self):
+        idx = 1
+        while idx < self._capacity:
+            if self._value[2 * idx] < self._value[2 * idx + 1]:
+                idx = 2 * idx
+            else:
+                idx = 2 * idx + 1
+        return idx - self._capacity
