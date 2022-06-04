@@ -8,12 +8,7 @@ import pandas as pd
 
 import drl.experiments as experiments
 import drl.utils as utils
-
-
-# It does not include time elapsed during sleep
-# def GET_TIME(): return time.process_time()
-# It does include time elapsed during sleep
-def GET_TIME(): return time.perf_counter()
+from drl.utils import GET_TIME
 
 
 class Trainer_old(object):
