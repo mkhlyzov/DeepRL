@@ -14,7 +14,7 @@ import drl.policies as policies
 import drl.replay_buffers as replay_buffers
 
 
-class DQAgentTests(unittest.TestCase):
+class DQAgentTest(unittest.TestCase):
 
     def setUp(self):
         test_env_name = 'CartPole-v1'
@@ -110,12 +110,12 @@ class DQAgentTests(unittest.TestCase):
         cfg = dict(self.cfg)
         cfg['env'] = self.env
         with self.assertRaises(ValueError):
-            DQAgent(self.cfg)
+            DQAgent(**cfg)
 
         cfg = dict(self.cfg)
         cfg['env_fn'] = self.env_fn
         with self.assertRaises(ValueError):
-            DQAgent(self.cfg)
+            DQAgent(**cfg)
 
     def test_should_act_on_observation(self):
         agent = DQAgent(**self.cfg)
@@ -181,10 +181,10 @@ class DQAgentTests(unittest.TestCase):
         dones = [False] * (steps - 1) + [True]
 
         agent = DQAgent(**self.cfg)
-        self.assertEqual(len(agent.memory), 0)
+        self.assertEqual(len(agent.replay_buffer), 0)
         agent.process_trajectory(obs, actions, rewards, dones)
-        self.assertGreater(len(agent.memory), 0)
-        self.assertEqual(len(agent.memory), steps)
+        self.assertGreater(len(agent.replay_buffer), 0)
+        self.assertEqual(len(agent.replay_buffer), steps)
 
     def test_agent_should_learn(self):
         steps = 200

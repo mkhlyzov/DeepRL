@@ -12,7 +12,6 @@ from drl.envs import (
 )
 
 
-@unittest.skip('.')
 class VectorEnvTest(unittest.TestCase):
     def setUp(self):
         self.cfg = {
@@ -67,6 +66,7 @@ class VectorEnvTest(unittest.TestCase):
         for obs in vec_observation:
             self.assertIn(obs, vec_env.observation_space)
 
+    @unittest.skip('Behaviour changed in gym==0.24')
     def test_should_not_step_before_initialization(self):
         vec_env = VectorEnv(**self.cfg)
         random_vec_action = [
