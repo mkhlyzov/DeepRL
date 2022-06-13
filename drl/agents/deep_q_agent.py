@@ -61,8 +61,8 @@ class DQAgent(BaseAgent):
 
         estimator: torch.nn.Module = None,
         noisy: bool = True,
-        noisy_use_factorized: bool = True,
-        parametrize: bool = True,
+        noisy_use_factorized: bool = False,
+        parametrize: bool = False,
 
         behaviour_policy: Policy = None,
         target_policy: Policy = None,
@@ -116,27 +116,20 @@ class DQAgent(BaseAgent):
             p.requires_grad = False
 
         # self.optimizer = torch.optim.Adam(self.q_eval.parameters(), lr)
-        self.optimizer = NGD(self.q_eval.parameters(), lr)
-        # self.optimizer = AdaHessian(self.q_eval.parameters(), lr)
-        # self.optimizer = torch.optim.AdamW([
-        #     {
-        #         'params': [p for name, p in self.q_eval.named_parameters()
-        #                    if 'sigma' not in name],
-        #         'lr': lr,
-        #         'weight_decay': 1e-2
-        #     },
-        #     {
-        #         'params': [p for name, p in self.q_eval.named_parameters()
-        #                    if 'sigma' in name],
-        #         'lr': lr,
-        #         'weight_decay': 0
-        #     },
-        # ])
-        # self.preconditioner = KFAC(self.q_eval, 0.1)
-        # self.preconditioner = KFAC(
-        #     [p for name, p in self.q_eval.named_parameters()
-        #      if 'sigma' not in name], 0.1
-        # )
+        self.optimizer = torch.optim.AdamW([
+            {
+                'params': [p for name, p in self.q_eval.named_parameters()
+                           if 'sigma' not in name],
+                'lr': lr,
+                'weight_decay': 1e-2
+            },
+            {
+                'params': [p for name, p in self.q_eval.named_parameters()
+                           if 'sigma' in name],
+                'lr': lr,
+                'weight_decay': 0
+            },
+        ])
 
     @torch.no_grad()
     def action(self, observation):
@@ -209,14 +202,13 @@ class DQAgent(BaseAgent):
         return debug_info
 
     def _learn(self, debug=False):
-        batch = self._sample_minibatch_from_replay_buffer()
+        self.q_eval.train()
+        self.q_target.train()
 
         self.q_eval.reset_noise()
         self.q_target.reset_noise()
 
-        self.q_eval.train()
-        self.q_target.train()
-
+        batch = self._sample_minibatch_from_replay_buffer()
         state = batch['states'][:, 0, :]
         action = batch['actions'][:, 0]
         reward = batch['rewards'][:, 0]
@@ -240,7 +232,6 @@ class DQAgent(BaseAgent):
         delta = np.power(self.gamma, self.n_steps) * v_next * ~done + \
             reward - q_current_eval[batch_index, action]
 
-        # loss = torch.mean(delta**2) / 4 + dot_prod / 10
         loss = delta**2
         if 'weights' in batch:
             loss *= batch['weights']
@@ -253,7 +244,6 @@ class DQAgent(BaseAgent):
         self.optimizer.zero_grad()
         loss.backward()
         # torch.nn.utils.clip_grad_norm_(self.q_eval.parameters(), 10.)
-        # self.preconditioner.step()
         self.optimizer.step()
 
         # CONSTRUCTING DEBUG INFO
@@ -276,8 +266,6 @@ class DQAgent(BaseAgent):
                 debug_info['features_cos'] = torch.nn.CosineSimilarity(dim=1)(
                     features_current, features_next).mean().detach().item()
 
-        # for p in self.q_eval.parameters():
-        #     p.grad = None
         return debug_info
 
     def _update_network_parameters(self):

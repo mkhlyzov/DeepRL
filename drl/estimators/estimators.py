@@ -51,8 +51,10 @@ class DuelingDeepQNetwork(torch.nn.Module):
         for i in range(len(self.dense_layers)):
             x = self.dense_layers[i](x)
             # x = torch.nn.functional.dropout(x, rate)
-            x *= torch.normal(1, rate / (1 - rate), size=x.shape)
-            x = torch.nn.functional.layer_norm(x, x.shape[1:])
+            # x *= torch.normal(
+            #     1, rate / (1 - rate), size=x.shape, device=x.device
+            # ).clamp(-1., 3.)
+            # x = torch.nn.functional.layer_norm(x, x.shape[1:])
             x = torch.nn.functional.selu(x)
             # x = torch.nn.functional.rrelu(x, training=self.training)
         return x
@@ -85,6 +87,7 @@ class DuelingDeepQNetwork(torch.nn.Module):
                 torch.nn.utils.parametrize.register_parametrization(
                     child, 'sigma_bias', NonNegative())
         for i in range(len(self.dense_layers)):
+            pass
             self.dense_layers[i] = torch.nn.utils.parametrizations.orthogonal(
                 self.dense_layers[i])
             # self.dense_layers[i] = torch.nn.utils.weight_norm(

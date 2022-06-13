@@ -275,7 +275,7 @@ class Trainer(object):
         self,
         agent: object = None,
         env_fn: callable = None,
-        samples_per_update: int = 8,
+        samples_per_update: float = 1,
         metrics: list = [],
         num_envs: int = 8,
         log_dir: str = None,
@@ -349,6 +349,7 @@ class Trainer(object):
 
     def train(
         self,
+        *,
         num_episodes: int = float('inf'),
         num_steps: int = float('inf'),
         eval_freq: int = float('inf'),
@@ -358,7 +359,8 @@ class Trainer(object):
         no_ops_evaluation: int = 0,
         reset: bool = False,
         plot: bool = True,
-        to_csv: bool = False
+        to_csv: bool = False,
+        sleep_after_evaluation: int = 0,
     ):
         """Train agent on self.env
 
@@ -405,14 +407,13 @@ class Trainer(object):
             if self._if_should_evaluate():
                 # EVALUATE PERFORMANCE, SNAPSHOT metrics.
                 # ALL CALCULATIONS HERE
-                self.time_per_env_step = (
-                    GET_TIME() - t0)
+                self.time_per_env_step = GET_TIME() - t0
                 self._eval(eval_episodes, eval_steps, no_ops_evaluation)
                 self._print_latest_statistics()
-                t0 = GET_TIME()
-
                 if to_csv:
                     self.to_csv(path=self.report_file)
+                time.sleep(sleep_after_evaluation)
+                t0 = GET_TIME()
 
             if self._if_should_report():
                 # PLOT PERFORMANCE, DUMP RESULTS ON DISC.
@@ -469,7 +470,7 @@ class Trainer(object):
             self.done_hist[i].append(d)
 
     def _if_should_learn(self):
-        return (self.env_steps_taken // self.samples_per_update
+        return (self.env_steps_taken / self.samples_per_update
                 - self.optimization_steps_taken) > 0
 
     def _if_should_evaluate(self):
