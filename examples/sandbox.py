@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 import pandas as pd
 import numpy as np
 import torch
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 from IPython.display import clear_output
 
 ROOT = pathlib.Path.cwd()
@@ -20,6 +20,7 @@ sys.path.append(ROOT)
 
 import drl.agents as agents
 import drl.experiments as experiments
+import drl.policies as policies
 import drl.utils as utils
 
 logging.basicConfig(
@@ -27,6 +28,7 @@ logging.basicConfig(
     format='%(asctime)s: %(message)s',
     datefmt='%H:%M:%S',
 )
+torch.set_num_threads(1)
 #####################################################################
 #%%
 env_fn = lambda: gym.make('LunarLander-v2')
@@ -35,32 +37,30 @@ env = env_fn()
 agent = agents.DQAgent(
     observation_space=env.observation_space,
     action_space=env.action_space,
-    
-    noisy=True, noisy_use_factorized=False, parametrize=False,
 
-    behaviour_policy=None,
-    target_policy=None,
-    epsilon=0.01, replay_buffer=None,
-    mem_size=1_000_000, min_history=10_000, batch_size=64,
-    lr=3e-4, gamma=0.99, n_steps=4, replace_target=100,
+    noisy=False, noisy_use_factorized=False, parametrize=False,
+    behaviour_policy=policies.BoltzmannPolicy(0.01),
+    target_policy=policies.BoltzmannPolicy(0.01),
 
-    optimizer_params={},
+    mem_size=500_000, min_history=1_000, batch_size=64,
+    lr=3e-4, gamma=0.99, n_steps=1, replace_target=100,
 
-    device=None,
-    fname='DQAgent_model.h5',
+    device='cpu',
+    fname='DQAgent_model.pt',
 )
 trainer = experiments.Trainer(
     agent, env_fn,
     samples_per_update=1,
     metrics='all',
-    log_dir=pathlib.Path(ROOT).joinpath('logs/LunarLander/!config_0'),
+    log_dir=pathlib.Path(ROOT).joinpath('logs/LunarLander_v2/!config_0'),
     num_envs=16,
     multiprocessing=False
 )
-#%%
+#%% training agent
 trainer.train(
-    num_steps=10_000_000, eval_freq=20_000, report_freq=100_000,
-    eval_steps=30_000, plot=True, to_csv=True
+    num_steps=2_000_000, eval_freq=20_000, report_freq=200_000,
+    eval_steps=30_000, plot=True, to_csv=True,
+    sleep_after_evaluation=15
 )
 """
 100k eval steps with noise reset: ~90s -> 120s???
@@ -72,17 +72,10 @@ trainer.train(
 100k train steps w/o prioritized 1spa: 145s 260s (cpu vs cuda)
 (150?) 180 - 220 - 250+ (s) cpu training (best seen, average, worst)
 """
-#%% regular env evaluation
-t0 = time.perf_counter()
-eval_scores = experiments.evaluate_agent(
-    agent, env, num_steps=100_000, no_ops=0)
-print('time taken (s):', time.perf_counter() - t0)
-print('avg_eval_score =', np.mean(eval_scores))
-print('eval_score_std =', np.std(eval_scores))
 #%% vec_env evaluation
 t0 = time.perf_counter()
 eval_scores = experiments.evaluate_agent(
-    agent, env_fn, num_steps=100_000, no_ops=0, num_envs=8)
+    agent, env_fn, num_steps=100_000, no_ops=0, num_envs=16)
 print('time taken (s):', time.perf_counter() - t0)
 print('avg_eval_score =', np.mean(eval_scores))
 print('eval_score_std =', np.std(eval_scores))
@@ -124,23 +117,24 @@ print('env.reset 100k, time taken (s):', time.perf_counter() - t0)
 # time ~ 30s
 #%% Playing for 1 episode
 env = gym.make('LunarLander-v2')
+# env = gym.wrappers.RecordVideo(env, ROOT / 'logs/videos')
 done = False
 score = 0
 observation = env.reset()
-t0 = time.time()
+t0 = time.perf_counter()
 num_steps = 0
 
 while not done:
-    # env.render(mode='human')
-    action = agent.choose_action(observation)
+    env.render(mode='human')
+    action = agent.action(observation)
 
     observation_, reward, done, _ = env.step(action)
     score += reward
     observation = observation_
     # agent.learn()
     num_steps += 1
-print(score)
-print(time.time() - t0)
+print(f'{score=:.1f}   frames={num_steps}')
+print(time.perf_counter() - t0)
 env.close()
 env = gym.make('LunarLander-v2')
 #%%
@@ -161,20 +155,40 @@ for i in range(20_000):
     pass
     # agent.q_eval.reset_noise()
     # agent.action(s64)
-    # agent.learn()
+    agent.learn()
     # agent.q_eval(s64)
     # agent._update_network_parameters()
     # agent.memory.sample(64)
     # agent.memory.mem_buffer.sample_buffer(64)
     # counter += set(np.random.choice(64*100, 64, replace=False)).__len__()
 print(time.perf_counter() - t0)
-#%%
-tmp_dict = {i: 0 for i in range(4)}
-s = agent.memory.sample_buffer(1)[0][:, 0, :]
-t0 = time.time()
+#%% probabilistic distrib over actions
+n_samples = 20
+tmp_dict = [
+    {i: 0 for i in range(4)} for _ in range(n_samples)
+]
+s = agent.replay_buffer.sample(n_samples)[0][:, 0, :]
+# s = torch.tensor(np.array([env.observation_space.sample() for _ in range(n_samples)]))
+t0 = time.perf_counter()
 for i in range(100_000):
-    # a = agent.choose_action(s)
-    # tmp_dict[a] += 1
-    agent.learn()
-print(time.time() - t0)
-print(tmp_dict)
+    a = agent.action(s)
+    for j in range(n_samples):
+        tmp_dict[j][a[j]] += 1
+    # agent.learn()
+print(time.perf_counter() - t0)
+for j in range(n_samples):
+    print(tmp_dict[j])
+#%%
+import timeit
+runtimes = []
+threads = [t for t in range(1, 17)]
+for t in threads:
+    torch.set_num_threads(t)
+    r = timeit.timeit(
+        setup = "import torch; x = torch.randn(2048, 2048); \
+            y = torch.randn(2048, 2048)", stmt="torch.mm(x, y)",
+        number=100)
+    runtimes.append(r)
+    
+plt.style.use('seaborn')
+plt.plot(threads, runtimes)

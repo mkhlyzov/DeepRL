@@ -10,6 +10,15 @@ class NonNegative(torch.nn.Module):
         return X.abs()
 
 
+class WeightStandartisation(torch.nn.Module):
+    """
+    https://github.com/joe-siyuan-qiao/WeightStandardization
+    """
+
+    def forward(self, X):
+        raise NotImplementedError()
+
+
 class NoisyLinear(torch.nn.Linear):
     """
     Implementation of Noisy layer from the paper Noisy Networks for Exploration
@@ -63,8 +72,10 @@ class NoisyLinear(torch.nn.Linear):
             torch.nn.init.constant_(self.sigma_bias, self.sigma_init)
 
     def forward(self, x):
-        # W = self.weight + self.sigma_weight * Variable(self.epsilon_weight)
-        # b = self.bias + self.sigma_bias * Variable(self.epsilon_bias)
+        # w = self.weight + self.sigma_weight * self.epsilon_weight
+        # b = self.bias + self.sigma_bias * self.epsilon_bias
+        # w = w - w.mean(dim=1, keepdim=True)
+        # w = w / w.std(dim=1, keepdim=True)
         return torch.nn.functional.linear(
             x,
             self.weight + self.sigma_weight * self.epsilon_weight,

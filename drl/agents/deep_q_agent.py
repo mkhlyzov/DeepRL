@@ -115,21 +115,21 @@ class DQAgent(BaseAgent):
         for p in self.q_target.parameters():
             p.requires_grad = False
 
-        # self.optimizer = torch.optim.Adam(self.q_eval.parameters(), lr)
-        self.optimizer = torch.optim.AdamW([
-            {
-                'params': [p for name, p in self.q_eval.named_parameters()
-                           if 'sigma' not in name],
-                'lr': lr,
-                'weight_decay': 1e-2
-            },
-            {
-                'params': [p for name, p in self.q_eval.named_parameters()
-                           if 'sigma' in name],
-                'lr': lr,
-                'weight_decay': 0
-            },
-        ])
+        self.optimizer = torch.optim.Adam(self.q_eval.parameters(), lr)
+        # self.optimizer = torch.optim.AdamW([
+        #     {
+        #         'params': [p for name, p in self.q_eval.named_parameters()
+        #                    if 'sigma' not in name],
+        #         'lr': lr,
+        #         'weight_decay': 1e-2
+        #     },
+        #     {
+        #         'params': [p for name, p in self.q_eval.named_parameters()
+        #                    if 'sigma' in name],
+        #         'lr': lr,
+        #         'weight_decay': 0
+        #     },
+        # ])
 
     @torch.no_grad()
     def action(self, observation):
