@@ -40,7 +40,7 @@ class Prioritized(object):
         self.tree_ptr = 0
         # capacity must be positive and a power of 2.
         tree_capacity = 1
-        while tree_capacity < self.mem_buffer.mem_size:
+        while tree_capacity < self.mem_buffer.capacity:
             tree_capacity *= 2
 
         self.sum_tree = SumSegmentTree(tree_capacity)
@@ -55,8 +55,8 @@ class Prioritized(object):
         self.sum_tree[idx] = self.max_priority ** self.alpha
         self.min_tree[idx] = self.max_priority ** self.alpha
 
-    def __getitem__(self, idx):
-        return (*self.mem_buffer[idx], self._calculate_weight(idx))
+    def __getitem__(self, idx, beta=None):
+        return (*self.mem_buffer[idx], self._calculate_weight(idx, beta))
 
     def __len__(self):
         return len(self.mem_buffer)
@@ -65,15 +65,12 @@ class Prioritized(object):
         self.mem_buffer.append(*args, **kwargs)
         self.sum_tree[self.tree_ptr] = self.max_priority ** self.alpha
         self.min_tree[self.tree_ptr] = self.max_priority ** self.alpha
-        self.tree_ptr = self.mem_buffer.mem_cntr % self.mem_buffer.mem_size
+        self.tree_ptr = self.mem_buffer.mem_cntr % self.mem_buffer.capacity
 
     def sample(self, batch_size=1, beta=None):
         """Sample a batch of experiences."""
         # assert not self.awaiting_priority_update
         assert len(self) >= batch_size
-        if beta is None:
-            beta = self.alpha * 0.67
-        assert beta >= 0
 
         idx = self._sample_index(batch_size)
         data = self.mem_buffer[idx]
@@ -99,9 +96,12 @@ class Prioritized(object):
 
         return indices
 
-    def _calculate_weight(self, idx, beta):
+    def _calculate_weight(self, idx, beta=None):
         """Calculate the weight of the experience at idx."""
         assert isinstance(idx, (int, Iterable))
+        if beta is None:
+            beta = self.alpha * 0.67
+        assert beta >= 0
         # get max weight
         p_min = self.min_tree.min() / self.sum_tree.sum()
         max_weight = (p_min * len(self)) ** (-beta)

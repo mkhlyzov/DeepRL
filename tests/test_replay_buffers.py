@@ -202,5 +202,59 @@ class MinSegmentTreeTest(unittest.TestCase):
         self.assertEqual(self.tree.argmin(), np.argmin(items))
 
 
+class PrioritizedBufferTest(unittest.TestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.max_size = 100_000
+        self.observation_shape = (8,)
+        self.fake_item = (
+            np.ones(self.observation_shape, dtype=np.float32),
+            1,
+            1.5,
+            np.ones(self.observation_shape, dtype=np.float32) * 2,
+            False
+        )
+        proxy_buffer = ReplayBuffer(self.max_size, self.observation_shape)
+        self.buffer = Prioritized(proxy_buffer)
+
+    def test_prioritized_buffer_should_be_created_correctly(self):
+        pass
+
+    def test_should_be_created_empty(self):
+        self.assertEqual(len(self.buffer), 0)
+
+    def test_after_append_should_not_be_empty(self):
+        self.buffer.append(self.fake_item)
+        self.assertGreater(len(self.buffer), 0)
+
+    @unittest.skip('Prioritized.clear() is not implemented')
+    def test_after_deleting_all_items_should_be_empty(self):
+        self.buffer.append(self.fake_item)
+        self.buffer.append(self.fake_item)
+        self.buffer.clear()
+        self.assertEqual(len(self.buffer), 0)
+
+    def test_should_not_overflow_max_capacity(self):
+        for _ in range(self.max_size * 2):
+            self.buffer.append(self.fake_item)
+        self.assertEqual(len(self.buffer), self.max_size)
+
+    def test_sampled_batch_should_inherit_dimentionality(self):
+        batch_size = 64
+        for _ in range(self.max_size):
+            self.buffer.append(self.fake_item)
+        batch = self.buffer.sample(batch_size)
+
+        """batch is a sarsa-like tuple of np.ndarrays"""
+        self.assertEqual(len(batch), len(self.fake_item) + 1)
+        for batch_i, item_i in zip(batch, self.fake_item):
+            self.assertEqual(batch_i.shape[0], batch_size)
+            if isinstance(item_i, Iterable):
+                self.assertEqual(batch_i.shape[1:], item_i.shape)
+            else:
+                self.assertFalse(isinstance(batch_i[0], Iterable))
+
+
 if __name__ == '__main__':
     unittest.main()

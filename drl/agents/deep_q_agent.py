@@ -69,6 +69,7 @@ class DQAgent(BaseAgent):
         epsilon: float = 1e-2,  # For exploration. No decay due to NoisyNet
 
         replay_buffer: Buffer = None,
+        prioritized: float = False,
         mem_size: int = 1_000_000,
         min_history: int = 10_000,
         batch_size: int = 64,
@@ -86,6 +87,11 @@ class DQAgent(BaseAgent):
 
         self.replay_buffer = replay_buffer if replay_buffer is not None else \
             NstepReplayBuffer(mem_size, self.observation_space.shape, 1)
+        if prioritized:
+            self.replay_buffer = Prioritized(
+                self.replay_buffer,
+                max_priority=50,
+            )
 
         self.min_history = min_history
         self.n_steps = n_steps
@@ -236,8 +242,8 @@ class DQAgent(BaseAgent):
         if 'weights' in batch:
             loss *= batch['weights']
             self.replay_buffer.update_last_priorities(
-                # (torch.abs(delta) + 1e-2).clip(0.1, 50.).detach().numpy()
-                (torch.argsort(delta.abs()) + 1).cpu().detach().numpy()
+                (torch.abs(delta)).clip(0.1, 50.).detach().numpy()
+                # (torch.argsort(delta.abs()) + 1).cpu().detach().numpy()
             )
         loss = loss.mean() / 4
 

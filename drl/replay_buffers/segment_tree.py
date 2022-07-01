@@ -78,7 +78,6 @@ class SegmentTree(object):
             )
 
     def __getitem__(self, idx):
-        assert 0 <= idx < self._capacity
         return self._value[self._capacity + idx]
 
 
